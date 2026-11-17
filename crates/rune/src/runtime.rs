@@ -94,6 +94,9 @@ mod exit_mask;
 mod font_families;
 #[path = "runtime/key_index.rs"]
 mod key_index;
+#[path = "runtime/retained.rs"]
+mod retained;
+pub use retained::Retained;
 #[path = "runtime/system_settings.rs"]
 mod system_settings;
 #[path = "runtime/commit/prune.rs"]
@@ -449,6 +452,7 @@ pub struct Runtime<S: 'static> {
     layout: LayoutEngine,
     node_index: HashMap<NodeId, usize>,
     path_ids: HashMap<String, NodeId>,
+    retained: retained::Retained,
     pub(crate) memo: crate::memo::MemoCache,
     next_id: u64,
     commits: u64,
@@ -861,6 +865,7 @@ impl<S: 'static> Runtime<S> {
             layout: LayoutEngine::new(),
             node_index: HashMap::default(),
             path_ids: HashMap::default(),
+            retained: Default::default(),
             memo: Default::default(),
             next_id: 1,
             commits: 0,

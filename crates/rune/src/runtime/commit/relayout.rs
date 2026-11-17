@@ -52,6 +52,8 @@ pub(super) enum CommitKind {
     Relayout,
     /// Only virtual windows moved: keep mounted subtrees and build the rows that enter.
     Remount,
+    /// Only retained writes (`Runtime::retained`) changed text: write it and lay out again.
+    Patch,
 }
 
 impl<S: 'static> Runtime<S> {
@@ -64,6 +66,10 @@ impl<S: 'static> Runtime<S> {
             // Exiting nodes left the layout tree.
             && self.layout.live_count() == self.nodes.len();
         if !unchanged { return CommitKind::Rebuild; }
+        if self.retained.pending() {
+            let patch = !self.relayout && !self.retained.structural() && self.nodes.iter().all(reusable);
+            return if patch { CommitKind::Patch } else { CommitKind::Rebuild };
+        }
         if self.relayout {
             // The nodes it built are all there, in the layout tree's order.
             return if self.nodes.iter().all(reusable) { CommitKind::Relayout } else { CommitKind::Rebuild };
@@ -75,7 +81,10 @@ impl<S: 'static> Runtime<S> {
     /// was built, remounts virtual rows alone when only their window moved, else runs the view.
     pub(super) fn measure_commit(&mut self, tx: &Tx) -> Measured {
         let kind = self.commit_kind(tx);
-        if kind == CommitKind::Relayout {
+        // A commit that runs the view builds what the retained writes said.
+        let patched = kind == CommitKind::Patch && self.write_retained();
+        if kind != CommitKind::Patch { self.retained.take(); }
+        if kind == CommitKind::Relayout || patched {
             // The view keeps what it last read; `settle_layout_reads` and the caret check run it
             // when the new layout moves them.
             let reads = self.layout_seen.reads.clone();

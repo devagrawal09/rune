@@ -552,7 +552,7 @@ impl<S: 'static> Runtime<S> {
         self.reuse.read_moved = read_moved;
         if self.has_pixel_aspect && self.pixel_aspect_changed() { self.relayout = true; }
         let shifted = !(self.dirty || self.relayout || self.settle) && self.virtual_window_changed();
-        let besides = self.dirty || self.relayout || self.settle || shifted;
+        let besides = self.dirty || self.relayout || self.settle || shifted || self.retained.pending();
         let other = ran || besides;
         self.count_layout_echo(ran_layout || read_moved, other);
         if other || ran_layout || read_moved {
@@ -564,7 +564,7 @@ impl<S: 'static> Runtime<S> {
                 tx.settle = true;
             }
             self.settled = tx.settle;
-            self.state_unchanged = !ran && !self.dirty && !ran_layout && !self.settle && self.commits > 0;
+            self.state_unchanged = !ran && !self.dirty && !ran_layout && !self.settle && self.commits > 0 && !self.retained.structural();
             #[cfg(debug_assertions)]
             if ran_other || besides || ran_layout || read_moved { self.live_check = None; }
             self.capture_keeps(&mut tx);
