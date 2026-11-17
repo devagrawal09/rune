@@ -1,0 +1,35 @@
+--- a/rust-solid/crates/runtime/src/plan_v2.rs
++++ b/rust-solid/crates/runtime/src/plan_v2.rs
+@@ -1062,7 +1062,8 @@
+ /// `ArraySpeciesCreate(O, n)`: `IsArray(O)`, then `Get(O, "constructor")`.
+ fn species(rt: &mut Runtime, c: &Ctx, a: &Value) -> Result<(), Error> {
+     match rt.js_get(a, &Key::name("constructor"))? {
+-        Value::Func(Builtin::ArrayCtor) => Ok(()),
++        // Undefined (a draft hides `constructor`) means ArrayCreate.
++        Value::Func(Builtin::ArrayCtor) | Value::Undef => Ok(()),
+         other => Err(fail(c, format!("an array's constructor is {other:?}"))),
+     }
+ }
+@@ -2329,6 +2330,22 @@
+         }
+     }
+ 
++    /// Bench prototype: `setStore(draft => { ... })` from host code, as an
++    /// app's own event handler would write it.
++    pub fn store_set(
++        &mut self,
++        name: &str,
++        f: &mut dyn FnMut(&mut Runtime, Value) -> Result<(), Error>,
++    ) -> Result<(), String> {
++        match binding(&self.c, name).map_err(|e| e.message())? {
++            Binding::Store(proxy) => self
++                .runtime
++                .store_set(&proxy, &mut |rt: &mut Runtime, draft: Value| f(rt, draft).map(|_| Value::Undef))
++                .map_err(|e| e.message()),
++            _ => Err(format!("{name} is not a store")),
++        }
++    }
++
+     /// Glue prototype: a source's or memo's current value, read untracked.
+     pub fn value(&mut self, name: &str) -> Result<Value, String> {
+         let c = self.c.clone();

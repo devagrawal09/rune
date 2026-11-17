@@ -1,0 +1,273 @@
+--- a/rust-solid/crates/runtime/src/plan_v2.rs	2026-11-10 22:42:12.600564798 +0000
++++ b/rust-solid/crates/runtime/src/plan_v2.rs	2026-11-10 22:12:16.359062269 +0000
+@@ -59,6 +59,13 @@
+     Length {
+         array: Rc<Expr>,
+     },
++    /// `array.slice(start, end)`: the windowed list a virtualised `For`
++    /// iterates (glue prototype).
++    Slice {
++        array: Rc<Expr>,
++        start: Rc<Expr>,
++        end: Rc<Expr>,
++    },
+     Filter {
+         array: Rc<Expr>,
+         param: String,
+@@ -490,6 +497,11 @@
+             }
+             Expr::Get { object, .. } => self.expr(object, scope, reads),
+             Expr::Length { array } => self.expr(array, scope, reads),
++            Expr::Slice { array, start, end } => {
++                self.expr(array, scope, reads)?;
++                self.expr(start, scope, reads)?;
++                self.expr(end, scope, reads)
++            }
+             Expr::Filter { array, param, body }
+             | Expr::Map { array, param, body }
+             | Expr::FindIndex { array, param, body } => {
+@@ -1194,6 +1206,30 @@
+             }
+             Ok(Value::Int(length(rt, c, &a)? as i64))
+         }
++        Expr::Slice { array, start, end } => {
++            // As `Array.prototype.slice` reads its receiver: the method,
++            // `length`, the species, then HasProperty and Get per index.
++            let a = eval(rt, c, array, env)?;
++            if !rt.is_array(&a) {
++                return Err(fail(c, format!("slice of {a:?}, not an array")));
++            }
++            let from = eval(rt, c, start, env)?;
++            let from = integer(c, &from)?;
++            let to = eval(rt, c, end, env)?;
++            let to = integer(c, &to)?;
++            method(rt, c, &a, "slice")?;
++            let n = length(rt, c, &a)? as i64;
++            let at = |k: i64| if k < 0 { (n + k).max(0) } else { k.min(n) };
++            species(rt, c, &a)?;
++            let mut out = vec![];
++            for i in at(from)..at(to).max(at(from)) {
++                let k = Key::Idx(i as u32);
++                if rt.js_has(&a, &k)? {
++                    out.push(rt.js_get(&a, &k)?);
++                }
++            }
++            Ok(Value::Obj(JsObj::new_array(out)))
++        }
+         Expr::Filter { array, param, body } => {
+             array_op(rt, c, ArrayOp::Filter, array, param, body, env)
+         }
+@@ -1831,6 +1867,7 @@
+         Expr::Read { source } => !matches!(binding(c, source), Ok(Binding::Store(_))),
+         Expr::Get { .. }
+         | Expr::Length { .. }
++        | Expr::Slice { .. }
+         | Expr::Filter { .. }
+         | Expr::Map { .. }
+         | Expr::FindIndex { .. }
+@@ -2283,6 +2320,21 @@
+         self.check()
+     }
+ 
++    /// Glue prototype: the host sets a signal, as a scroll handler calling
++    /// `setWindow(..)` would; the next `turn` flushes it.
++    pub fn set_signal(&mut self, name: &str, v: Value) -> Result<(), String> {
++        match binding(&self.c, name).map_err(|e| e.message())? {
++            Binding::Signal(n) => self.runtime.write_with(n, &mut |_, _| Ok(v.clone())).map_err(|e| e.message()),
++            _ => Err(format!("{name} is not a signal")),
++        }
++    }
++
++    /// Glue prototype: a source's or memo's current value, read untracked.
++    pub fn value(&mut self, name: &str) -> Result<Value, String> {
++        let c = self.c.clone();
++        self.runtime.untrack(|rt| read(rt, &c, name)).map_err(|e| e.message())
++    }
++
+     pub fn requests(&self) -> Vec<Request> {
+         self.c.requests.borrow().clone()
+     }
+--- a/rust-solid/crates/runtime/src/renderer.rs	2026-11-10 22:42:12.600614087 +0000
++++ b/rust-solid/crates/runtime/src/renderer.rs	2026-11-10 22:32:36.747266837 +0000
+@@ -192,6 +192,10 @@
+     listeners: Vec<(String, Listener)>,
+     /// `prevProps` of the event props (what `assignProp` returned).
+     assigned: Vec<(String, Assigned)>,
++    /// Glue prototype: bumped when this node or anything under it changes,
++    /// and (`kver`) when its child list changes.
++    ver: u64,
++    kver: u64,
+ }
+ 
+ impl Default for TNode {
+@@ -207,6 +211,8 @@
+             props: vec![],
+             listeners: vec![],
+             assigned: vec![],
++            ver: 0,
++            kver: 0,
+         }
+     }
+ }
+@@ -225,6 +231,17 @@
+     /// Function identities, numbered in first-logged order.
+     fn_ids: RefCell<HashMap<(u8, u64), usize>>,
+     delegation: Delegation,
++    clock: u64,
++    /// Host writes since the last `take_writes`, for a host that mirrors this tree
++    /// (recorded only when on).
++    writes: Option<Vec<HostWrite>>,
++}
++
++/// A write a mirroring host has to repeat: new text on a node, or a changed child list.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum HostWrite {
++    Text(Node),
++    Children(Node),
+ }
+ 
+ impl Default for TreeRenderer {
+@@ -243,6 +260,8 @@
+             }],
+             log: RefCell::new(vec![]),
+             logging: std::cell::Cell::new(true),
++            clock: 0,
++            writes: None,
+             fn_ids: RefCell::new(HashMap::new()),
+             delegation: Delegation::default(),
+         }
+@@ -250,6 +269,14 @@
+     pub fn root(&self) -> Node {
+         0
+     }
++    /// Starts or stops recording `HostWrite`s.
++    pub fn record_writes(&mut self, on: bool) {
++        self.writes = on.then(Vec::new);
++    }
++    /// The writes recorded since the last call.
++    pub fn take_writes(&mut self) -> Vec<HostWrite> {
++        self.writes.as_mut().map(std::mem::take).unwrap_or_default()
++    }
+     pub fn len(&self) -> usize {
+         self.nodes.len()
+     }
+@@ -299,10 +326,36 @@
+     fn opt(n: Option<Node>) -> J {
+         n.map(|n| json!(n)).unwrap_or(J::Null)
+     }
+-    fn new_node(&mut self, node: TNode) -> Node {
++    fn new_node(&mut self, mut node: TNode) -> Node {
++        self.clock += 1;
++        node.ver = self.clock;
+         self.nodes.push(node);
+         self.nodes.len() - 1
+     }
++    /// Glue prototype: stamp `node` and its ancestors with a new version.
++    fn touch(&mut self, mut node: Node) {
++        self.clock += 1;
++        loop {
++            self.nodes[node].ver = self.clock;
++            match self.nodes[node].parent {
++                Some(p) => node = p,
++                None => break,
++            }
++        }
++    }
++    /// Glue prototype: a node's tag (`None` for text), text and version.
++    pub fn glue_node(&self, node: Node) -> (Option<&str>, &Value, u64) {
++        let n = &self.nodes[node];
++        (n.tag.as_deref(), &n.text, n.ver)
++    }
++    /// Glue prototype: a node's children, without logging.
++    pub fn glue_kids(&self, node: Node) -> impl Iterator<Item = Node> + '_ {
++        self.kids(node)
++    }
++    /// Glue prototype: bumped only when `node`'s child list changes.
++    pub fn glue_kver(&self, node: Node) -> u64 {
++        self.nodes[node].kver
++    }
+     /// The tree under `node`: `[id, tag, [children…]]` for an element,
+     /// `[id, value]` for a text node.
+     pub fn tree(&self, node: Node) -> J {
+@@ -346,6 +399,9 @@
+         }
+         let n = &mut self.nodes[node];
+         (n.parent, n.prev, n.next) = (None, None, None);
++        if let Some(w) = &mut self.writes { w.push(HostWrite::Children(p)); }
++        self.touch(p);
++        self.nodes[p].kver = self.clock;
+     }
+     /// Puts `node` (unlinked) before `reference`, or last.
+     fn link(&mut self, parent: Node, node: Node, reference: Option<Node>) {
+@@ -363,6 +419,9 @@
+         }
+         let n = &mut self.nodes[node];
+         (n.parent, n.prev, n.next) = (Some(parent), prev, reference);
++        if let Some(w) = &mut self.writes { w.push(HostWrite::Children(parent)); }
++        self.touch(parent);
++        self.nodes[parent].kver = self.clock;
+     }
+     pub fn tag(&self, node: Node) -> Option<&str> {
+         self.nodes[node].tag.as_deref()
+@@ -490,6 +549,8 @@
+         self.log_with(|| json!(["replaceText", node, self.enc(value)]));
+         assert!(self.nodes[node].tag.is_none(), "replaceText of an element");
+         self.nodes[node].text = value.clone();
++        if let Some(w) = &mut self.writes { w.push(HostWrite::Text(node)); }
++        self.touch(node);
+     }
+     fn set_prop(&mut self, node: Node, name: &str, value: &str) {
+         self.set_property(node, name, &Value::str(value), &Value::Undef)
+@@ -520,6 +581,7 @@
+             }
+         } else {
+             self.set_expando(node, name, value.clone());
++            self.touch(node);
+         }
+     }
+     /// `insertNode(parent, node, anchor)`: DOM `insertBefore`.
+--- a/rust-solid/crates/runtime/src/ssr/plan.rs	2026-11-10 22:42:12.600720164 +0000
++++ b/rust-solid/crates/runtime/src/ssr/plan.rs	2026-11-10 22:12:16.360246428 +0000
+@@ -134,6 +134,7 @@
+         Expr::Object { fields } => fields.iter().any(|f| has_eval(&f.value)),
+         Expr::Get { object, .. } => has_eval(object),
+         Expr::Length { array } => has_eval(array),
++        Expr::Slice { array, start, end } => has_eval(array) || has_eval(start) || has_eval(end),
+         Expr::Filter { array, body, .. }
+         | Expr::Map { array, body, .. }
+         | Expr::FindIndex { array, body, .. } => has_eval(array) || has_eval(body),
+@@ -281,7 +282,7 @@
+                 _ => Ty::Unknown,
+             },
+             Expr::Length { .. } | Expr::FindIndex { .. } => Ty::Int,
+-            Expr::Filter { array, .. } => self.ty(array, locals),
++            Expr::Filter { array, .. } | Expr::Slice { array, .. } => self.ty(array, locals),
+             Expr::Map { array, param, body } => {
+                 let mut inner = locals.clone();
+                 inner.insert(param.clone(), element_ty(self.ty(array, locals)));
+@@ -320,6 +321,7 @@
+             Expr::Read { source } => self.kinds.get(source) != Some(&Kind::Store),
+             Expr::Get { .. }
+             | Expr::Length { .. }
++            | Expr::Slice { .. }
+             | Expr::Filter { .. }
+             | Expr::Map { .. }
+             | Expr::FindIndex { .. }
+@@ -726,6 +728,17 @@
+             let xs = array_items(&eval(s, c, array, env)?, "length")?;
+             Ok(JsVal::Num(xs.len() as i64))
+         }
++        Expr::Slice { array, start, end } => {
++            let xs = array_items(&eval(s, c, array, env)?, "slice")?;
++            let n = xs.len() as i64;
++            let at = |v: JsVal| match v {
++                JsVal::Num(k) if k < 0 => Ok((n + k).max(0)),
++                JsVal::Num(k) => Ok(k.min(n)),
++                other => fail(format!("slice bound {other:?}")),
++            };
++            let (a, b) = (at(eval(s, c, start, env)?)?, at(eval(s, c, end, env)?)?);
++            Ok(JsVal::array(xs[a as usize..b.max(a) as usize].to_vec()))
++        }
+         Expr::Filter { array, param, body } => {
+             let xs = array_items(&eval(s, c, array, env)?, "filter")?;
+             let mut out = vec![];

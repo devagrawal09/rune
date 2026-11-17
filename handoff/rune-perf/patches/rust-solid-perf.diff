@@ -1,0 +1,1243 @@
+diff --git a/rust-solid/crates/runtime/Cargo.toml b/rust-solid/crates/runtime/Cargo.toml
+index c373878..b759022 100644
+--- a/rust-solid/crates/runtime/Cargo.toml
++++ b/rust-solid/crates/runtime/Cargo.toml
+@@ -5,5 +5,5 @@ edition = "2021"
+ license = "MIT"
+ 
+ [dependencies]
+-serde = { version = "1", features = ["derive"] }
++serde = { version = "1", features = ["derive", "rc"] }
+ serde_json = { version = "1", features = ["preserve_order"] }
+diff --git a/rust-solid/crates/runtime/examples/bench.rs b/rust-solid/crates/runtime/examples/bench.rs
+new file mode 100644
+index 0000000..56c8635
+--- /dev/null
++++ b/rust-solid/crates/runtime/examples/bench.rs
+@@ -0,0 +1,98 @@
++// Scratch benchmark (not part of the repo): the same five workloads as the
++// Exact bench, driven through App::mount / click / turn.
++use rust_solid::plan_v2::{App, Plan};
++use serde_json::{json, Value as J};
++use std::time::Instant;
++
++pub fn mount(p: Plan) -> Result<App, String> {
++    if std::env::var("RS_LOG").is_ok() { App::mount(p) } else { App::mount_unlogged(p) }
++}
++
++const ROWS: usize = 1000;
++const FAN: usize = 1000;
++
++fn lit(v: J) -> J { json!({"op":"literal","value":v}) }
++fn read(s: &str) -> J { json!({"op":"read","source":s}) }
++fn local(s: &str) -> J { json!({"op":"local","name":s}) }
++fn get(o: J, k: &str) -> J { json!({"op":"get","object":o,"key":k}) }
++fn add(a: J, b: J) -> J { json!({"op":"add","left":a,"right":b}) }
++fn text(v: J) -> J { json!({"kind":"text","value":v}) }
++fn el(tag: &str, events: J, children: Vec<J>) -> J { json!({"kind":"element","tag":tag,"events":events,"children":children}) }
++fn button(steps: J) -> J { el("button", json!([{"name":"onClick","steps":steps}]), vec![text(lit(json!("+")))]) }
++fn write(s: &str, v: J) -> J { json!({"op":"write","source":s,"value":v}) }
++
++fn rows_seed() -> J {
++    let items: Vec<J> = (0..ROWS).map(|i| json!({"op":"object","fields":[
++        {"key":"id","value":lit(json!(i))},
++        {"key":"label","value":lit(json!(format!("row {i}")))},
++        {"key":"even","value":lit(json!(i % 2 == 0))}]})).collect();
++    json!({"op":"object","fields":[{"key":"list","value":{"op":"array","items":items}}]})
++}
++
++fn plan(sources: J, memos: J, markup: Vec<J>) -> Plan {
++    serde_json::from_value(json!({"version":2,"component":"B","hosts":[],"sources":sources,"memos":memos,"actions":[],"markup":markup})).unwrap()
++}
++
++pub fn counter() -> Plan {
++    plan(json!([{"name":"n","kind":"signal","seed":lit(json!(0))}]), json!([]),
++        vec![el("div", json!([]), vec![button(json!([write("n", add(read("n"), lit(json!(1))))])), el("span", json!([]), vec![text(read("n"))])])])
++}
++
++pub fn fanout() -> Plan {
++    let memos: Vec<J> = (0..FAN).map(|i| json!({"name":format!("d{i}"),"value":add(read("x"), lit(json!(i)))})).collect();
++    let mut kids = vec![button(json!([write("x", add(read("x"), lit(json!(1))))]))];
++    for i in 0..FAN { kids.push(el("span", json!([]), vec![text(read(&format!("d{i}")))])); }
++    plan(json!([{"name":"x","kind":"signal","seed":lit(json!(0))}]), J::Array(memos), vec![el("div", json!([]), kids)])
++}
++
++pub fn select() -> Plan {
++    let row = el("p", json!([]), vec![text(add(
++        json!({"op":"cond","test":{"op":"eq","left":get(local("r"),"id"),"right":read("sel")},"then":lit(json!("> ")),"else":lit(json!(""))}),
++        get(local("r"), "label")))]);
++    plan(json!([{"name":"rows","kind":"store","seed":rows_seed()},{"name":"sel","kind":"signal","seed":lit(json!(-1))}]), json!([]),
++        vec![el("div", json!([]), vec![button(json!([write("sel", add(read("sel"), lit(json!(1))))])),
++            json!({"kind":"for","each":get(read("rows"),"list"),"item":"r","key":"identity","children":[row]})])])
++}
++
++pub fn filter() -> Plan {
++    let visible = json!({"op":"filter","array":get(read("rows"),"list"),"param":"r","body":
++        {"op":"or","left":{"op":"eq","left":read("mode"),"right":lit(json!("all"))},"right":get(local("r"),"even")}});
++    let flip = write("mode", json!({"op":"cond","test":{"op":"eq","left":read("mode"),"right":lit(json!("all"))},"then":lit(json!("even")),"else":lit(json!("all"))}));
++    plan(json!([{"name":"rows","kind":"store","seed":rows_seed()},{"name":"mode","kind":"signal","seed":lit(json!("all"))}]),
++        json!([{"name":"visible","value":visible}]),
++        vec![el("div", json!([]), vec![button(json!([flip])),
++            json!({"kind":"for","each":read("visible"),"item":"r","key":"identity","children":[el("p", json!([]), vec![text(get(local("r"),"label"))])]})])])
++}
++
++fn run(name: &str, make: fn() -> Plan, n: usize, check: impl Fn(&str, usize) -> bool) {
++    let mut best = f64::MAX;
++    for _rep in 0..5 {
++        let mut app = mount(make()).unwrap();
++        app.turn();
++        let b = app.clickables()[0].0;
++        let t = Instant::now();
++        for _ in 0..n { app.click(b).unwrap(); app.turn(); }
++        let us = t.elapsed().as_secs_f64() * 1e6 / n as f64;
++        app.check().unwrap();
++        assert!(check(&app.frame(), n), "{name}: wrong frame after {n} clicks");
++        app.dispose();
++        best = best.min(us);
++    }
++    println!("rust-solid {name:<10} {best:>10.2} us/click  (n={n}, best of 5)");
++}
++
++fn main() {
++    run("counter", counter, 100_000, |f, n| f.ends_with(&n.to_string()));
++    run("fanout", fanout, 2_000, |f, n| f.contains(&(n + FAN - 1).to_string()));
++    run("select", select, 2_000, |f, n| f.contains(&format!("> row {}", (n - 1) % ROWS)) || n > ROWS);
++    run("filter", filter, 1_000, |f, _| f.contains("row 1") );
++    // mount: build a 1000-row list from nothing, then tear it down
++    let mut best = f64::MAX;
++    let p = select();
++    for _ in 0..5 {
++        let t = Instant::now();
++        for _ in 0..100 { let mut a = mount(p.clone()).unwrap(); a.turn(); a.dispose(); }
++        best = best.min(t.elapsed().as_secs_f64() * 1e6 / 100.0);
++    }
++    println!("rust-solid {:<10} {best:>10.2} us/mount  (1000 rows, plan prebuilt; mount+first flush+dispose, best of 5)", "mount");
++}
+diff --git a/rust-solid/crates/runtime/examples/prof.rs b/rust-solid/crates/runtime/examples/prof.rs
+new file mode 100644
+index 0000000..44d710e
+--- /dev/null
++++ b/rust-solid/crates/runtime/examples/prof.rs
+@@ -0,0 +1,20 @@
++// Scratch profiling driver: one workload, fixed count, for callgrind.
++#[path = "bench.rs"]
++#[allow(dead_code)]
++mod bench;
++use rust_solid::plan_v2::App;
++use bench::mount;
++fn main() {
++    let w = std::env::args().nth(1).unwrap();
++    let n: usize = std::env::args().nth(2).unwrap().parse().unwrap();
++    if w == "mount" {
++        let p = bench::select();
++        for _ in 0..n { let mut a = mount(p.clone()).unwrap(); a.turn(); a.dispose(); }
++        return;
++    }
++    let p = match w.as_str() { "fanout" => bench::fanout(), "select" => bench::select(), "filter" => bench::filter(), _ => bench::counter() };
++    let mut app = mount(p).unwrap();
++    app.turn();
++    let b = app.clickables()[0].0;
++    for _ in 0..n { app.click(b).unwrap(); app.turn(); }
++}
+diff --git a/rust-solid/crates/runtime/src/plan_v2.rs b/rust-solid/crates/runtime/src/plan_v2.rs
+index e6a5e59..5cc8d32 100644
+--- a/rust-solid/crates/runtime/src/plan_v2.rs
++++ b/rust-solid/crates/runtime/src/plan_v2.rs
+@@ -21,8 +21,8 @@ use crate::slice1::{
+ use serde::Deserialize;
+ use serde_json::Value as J;
+ use std::{
+-    cell::RefCell,
+-    collections::{BTreeMap, HashMap, HashSet},
++    cell::{OnceCell, RefCell},
++    collections::{HashMap, HashSet},
+     rc::Rc,
+ };
+ 
+@@ -33,6 +33,9 @@ use std::{
+ pub enum Expr {
+     Literal {
+         value: J,
++        /// The literal's value, made once on first use.
++        #[serde(skip)]
++        cache: OnceCell<Value>,
+     },
+     Array {
+         items: Vec<Expr>,
+@@ -47,77 +50,80 @@ pub enum Expr {
+         name: String,
+     },
+     Get {
+-        object: Box<Expr>,
++        object: Rc<Expr>,
+         key: String,
++        /// The property key, made once on first use.
++        #[serde(skip)]
++        k: OnceCell<Key>,
+     },
+     Length {
+-        array: Box<Expr>,
++        array: Rc<Expr>,
+     },
+     Filter {
+-        array: Box<Expr>,
++        array: Rc<Expr>,
+         param: String,
+-        body: Box<Expr>,
++        body: Rc<Expr>,
+     },
+     Map {
+-        array: Box<Expr>,
++        array: Rc<Expr>,
+         param: String,
+-        body: Box<Expr>,
++        body: Rc<Expr>,
+     },
+     FindIndex {
+-        array: Box<Expr>,
++        array: Rc<Expr>,
+         param: String,
+-        body: Box<Expr>,
++        body: Rc<Expr>,
+     },
+     Add {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Eq {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Ne {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Lt {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Le {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Gt {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Ge {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     And {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Or {
+-        left: Box<Expr>,
+-        right: Box<Expr>,
++        left: Rc<Expr>,
++        right: Rc<Expr>,
+     },
+     Not {
+-        value: Box<Expr>,
++        value: Rc<Expr>,
+     },
+     Cond {
+-        test: Box<Expr>,
+-        then: Box<Expr>,
++        test: Rc<Expr>,
++        then: Rc<Expr>,
+         #[serde(rename = "else")]
+-        otherwise: Box<Expr>,
++        otherwise: Rc<Expr>,
+     },
+     /// A value eval (frontend `docs/EVAL.md`): the whole value of a memo.
+     /// The code is a reactive string; the host's table gives its plan, one
+     /// expression over the bindings, of the declared scalar type.
+     Eval {
+-        code: Box<Expr>,
++        code: Rc<Expr>,
+         bindings: Vec<EvalBinding>,
+         interface: String,
+         syntax: String,
+@@ -154,6 +160,9 @@ pub struct InnerBinding {
+ pub struct Field {
+     pub key: String,
+     pub value: Expr,
++    /// The property key, made once on first use.
++    #[serde(skip)]
++    pub k: OnceCell<Key>,
+ }
+ 
+ #[derive(Clone, Debug, Deserialize)]
+@@ -448,7 +457,7 @@ fn literal(value: &J) -> Result<Value, String> {
+ impl<'a> Check<'a> {
+     fn expr(&self, e: &Expr, scope: &mut Vec<String>, reads: bool) -> Result<(), String> {
+         match e {
+-            Expr::Literal { value } => literal(value).map(|_| ()),
++            Expr::Literal { value, .. } => literal(value).map(|_| ()),
+             Expr::Array { items } => items.iter().try_for_each(|x| self.expr(x, scope, reads)),
+             Expr::Object { fields } => {
+                 let mut seen = HashSet::new();
+@@ -779,7 +788,7 @@ impl<'a> Check<'a> {
+ fn literal_text(v: &View) -> Option<&J> {
+     match v {
+         View::Text {
+-            value: Expr::Literal { value },
++            value: Expr::Literal { value, .. },
+         } => Some(value),
+         _ => None,
+     }
+@@ -892,7 +901,51 @@ pub fn validate(plan: &Plan) -> Result<(), String> {
+ 
+ // ---- the evaluator ----
+ 
+-type Env = BTreeMap<String, Value>;
++/// The locals in scope: a persistent list, newest first, so a row's or a
++/// closure's copy is one `Rc` clone and adding a local copies nothing.
++/// Lookup sees the newest binding of a name, as an overwriting map would.
++#[derive(Clone, Default)]
++struct Env(Option<Rc<EnvNode>>);
++struct EnvNode {
++    name: Rc<str>,
++    value: Value,
++    next: Option<Rc<EnvNode>>,
++}
++impl Env {
++    fn new() -> Self {
++        Env(None)
++    }
++    fn get(&self, name: &str) -> Option<&Value> {
++        let mut n = self.0.as_deref();
++        while let Some(x) = n {
++            if &*x.name == name {
++                return Some(&x.value);
++            }
++            n = x.next.as_deref();
++        }
++        None
++    }
++    fn insert(&mut self, name: impl Into<Rc<str>>, value: Value) {
++        let next = self.0.take();
++        self.0 = Some(Rc::new(EnvNode {
++            name: name.into(),
++            value,
++            next,
++        }));
++    }
++}
++impl FromIterator<(String, Value)> for Env {
++    fn from_iter<I: IntoIterator<Item = (String, Value)>>(it: I) -> Self {
++        let mut env = Env::new();
++        for (k, v) in it {
++            env.insert(k, v);
++        }
++        env
++    }
++}
++
++/// FxHash: the names table is read on every evaluation.
++type NameHash = crate::slice1::FxBuild;
+ 
+ #[derive(Clone)]
+ enum Binding {
+@@ -918,7 +971,7 @@ struct Ctx {
+     u: Universal<TreeRenderer>,
+     hosts: Vec<HostSig>,
+     actions: HashMap<String, Action>,
+-    names: RefCell<HashMap<String, Binding>>,
++    names: RefCell<HashMap<String, Binding, NameHash>>,
+     /// Shared by an app and every plan evaluated in it: one request
+     /// numbering per host, per mount.
+     requests: Rc<RefCell<Vec<Request>>>,
+@@ -958,12 +1011,11 @@ fn integer(c: &Ctx, v: &Value) -> Result<i64, Error> {
+         .ok_or_else(|| fail(c, format!("expected an integer, got {v:?}")))
+ }
+ 
+-/// ToString for text and concatenation: a string is itself, an integer is
+-/// base ten.
+-fn text(c: &Ctx, v: &Value) -> Result<String, Error> {
++/// ToString as a value: a string is shared, not copied.
++fn text_value(c: &Ctx, v: Value) -> Result<Value, Error> {
+     match v {
+-        Value::Str(s) => Ok(s.to_string()),
+-        Value::Int(i) => Ok(i.to_string()),
++        Value::Str(_) => Ok(v),
++        Value::Int(i) => Ok(Value::str(&i.to_string())),
+         other => Err(fail(c, format!("ToString of {other:?}"))),
+     }
+ }
+@@ -1040,9 +1092,10 @@ fn array_op(
+     };
+     method(rt, c, &a, name)?;
+     let n = length(rt, c, &a)?;
++    let param: Rc<str> = param.into();
+     let f = |rt: &mut Runtime, x: Value| -> Result<Value, Error> {
+         let mut env = env.clone();
+-        env.insert(param.into(), x);
++        env.insert(param.clone(), x);
+         eval(rt, c, body, &env)
+     };
+     match op {
+@@ -1093,7 +1146,13 @@ fn eval(rt: &mut Runtime, c: &C, e: &Expr, env: &Env) -> Result<Value, Error> {
+         Ok((l, r))
+     };
+     match e {
+-        Expr::Literal { value } => literal(value).map_err(|m| fail(c, m)),
++        Expr::Literal { value, cache } => match cache.get() {
++            Some(v) => Ok(v.clone()),
++            None => {
++                let v = literal(value).map_err(|m| fail(c, m))?;
++                Ok(cache.get_or_init(|| v).clone())
++            }
++        },
+         Expr::Array { items } => {
+             let mut out = vec![];
+             for x in items {
+@@ -1102,18 +1161,19 @@ fn eval(rt: &mut Runtime, c: &C, e: &Expr, env: &Env) -> Result<Value, Error> {
+             Ok(Value::Obj(JsObj::new_array(out)))
+         }
+         Expr::Object { fields } => {
+-            let mut out = vec![];
++            let mut out = Vec::with_capacity(fields.len());
+             for f in fields {
+-                out.push((Rc::from(f.key.as_str()), eval(rt, c, &f.value, env)?));
++                let k = f.k.get_or_init(|| Key::name(&f.key)).clone();
++                out.push((k, eval(rt, c, &f.value, env)?));
+             }
+-            Ok(Value::Obj(JsObj::new_object(out)))
++            Ok(Value::Obj(JsObj::new_object_keyed(out)))
+         }
+         Expr::Read { source } => read(rt, c, source),
+         Expr::Local { name } => env
+             .get(name)
+             .cloned()
+             .ok_or_else(|| fail(c, format!("unbound local {name}"))),
+-        Expr::Get { object, key } => {
++        Expr::Get { object, key, k } => {
+             let o = eval(rt, c, object, env)?;
+             if !record_like(&o) || rt.is_array(&o) {
+                 return Err(fail(c, format!("get {key} of {o:?}, not a record")));
+@@ -1121,7 +1181,7 @@ fn eval(rt: &mut Runtime, c: &C, e: &Expr, env: &Env) -> Result<Value, Error> {
+             // `o.key` alone, as the TSX twin reads it: one Get (a store's `get`
+             // trap), no HasProperty. No plan value is `undefined`, so an
+             // `undefined` result is a missing field.
+-            let v = rt.js_get(&o, &Key::name(key))?;
++            let v = rt.js_get(&o, k.get_or_init(|| Key::name(key)))?;
+             if matches!(v, Value::Undef) {
+                 return Err(fail(c, format!("get {key}: no such field")));
+             }
+@@ -1144,9 +1204,21 @@ fn eval(rt: &mut Runtime, c: &C, e: &Expr, env: &Env) -> Result<Value, Error> {
+         Expr::Add { left, right } => {
+             let (l, r) = bin(rt, left, right)?;
+             if matches!(l, Value::Str(_)) || matches!(r, Value::Str(_)) {
+-                let mut s = text(c, &l)?;
+-                s.push_str(&text(c, &r)?);
+-                return Ok(Value::str(&s));
++                // `"" + s` and `s + ""` are `s` itself: no copy.
++                let (l, r) = (text_value(c, l)?, text_value(c, r)?);
++                let (Value::Str(a), Value::Str(b)) = (&l, &r) else {
++                    unreachable!()
++                };
++                if b.is_empty() {
++                    return Ok(l);
++                }
++                if a.is_empty() {
++                    return Ok(r);
++                }
++                let mut s = String::with_capacity(a.len() + b.len());
++                s.push_str(a);
++                s.push_str(b);
++                return Ok(Value::Str(Rc::from(s)));
+             }
+             let sum = integer(c, &l)?.checked_add(integer(c, &r)?);
+             match sum {
+@@ -1311,7 +1383,7 @@ fn linked(c: &C, plan: &Plan, bindings: &[EvalBinding]) -> Result<C, Error> {
+             .iter()
+             .map(|a| (a.name.clone(), a.clone()))
+             .collect(),
+-        names: RefCell::new(names),
++        names: RefCell::new(names.into_iter().collect()),
+         requests: c.requests.clone(),
+         fatal: c.fatal.clone(),
+         started: c.started.clone(),
+@@ -1680,7 +1752,7 @@ fn lower(v: &View) -> Template<'_> {
+ 
+ fn static_text(c: &C, value: &J) -> Result<Value, Error> {
+     let s = literal(value).map_err(|m| fail(c, m))?;
+-    Ok(Value::str(&text(c, &s)?))
++    text_value(c, s)
+ }
+ 
+ fn declare(rt: &mut Runtime, c: &C, t: &mut Template, env: &Env) -> Result<(), Error> {
+@@ -1876,7 +1948,7 @@ fn dynamic(rt: &mut Runtime, c: &C, v: &View, env: &Env) -> Result<Value, Error>
+                 0,
+                 Rc::new(move |rt: &mut Runtime, _| {
+                     let v = eval(rt, &c2, &value, &env)?;
+-                    Ok(Value::str(&text(&c2, &v)?))
++                    text_value(&c2, v)
+                 }),
+             ))
+         }
+@@ -1908,7 +1980,8 @@ fn dynamic(rt: &mut Runtime, c: &C, v: &View, env: &Env) -> Result<Value, Error>
+             ..
+         } => {
+             let (each, e1) = (each.clone(), env.clone());
+-            let (item, kids, e2, c2) = (item.clone(), kids.clone(), env.clone(), c.clone());
++            let item: Rc<str> = item.as_str().into();
++            let (kids, e2, c2) = (kids.clone(), env.clone(), c.clone());
+             // `children: (item) => fragment(children, {...env, item})`: the
+             // row item itself (identity keying passes a raw value).
+             let mapper = rt.function(
+@@ -2081,7 +2154,16 @@ impl App {
+ 
+     /// `mount` with the host's eval table (frontend `docs/EVAL.md`): the
+     /// plans an eval site's code compiles to.
++    /// `mount` with the host's op log off (benchmarks).
++    pub fn mount_unlogged(plan: Plan) -> Result<Self, String> {
++        Self::mount_inner(plan, EvalTable::default(), false)
++    }
++
+     pub fn mount_with(plan: Plan, evals: EvalTable) -> Result<Self, String> {
++        Self::mount_inner(plan, evals, true)
++    }
++
++    fn mount_inner(plan: Plan, evals: EvalTable, logging: bool) -> Result<Self, String> {
+         validate(&plan)?;
+         if !evals.evals.is_empty() {
+             validate_table(&evals)?;
+@@ -2091,6 +2173,7 @@ impl App {
+         }
+         let mut runtime = Runtime::default();
+         let host = Rc::new(RefCell::new(TreeRenderer::new()));
++        host.borrow().set_logging(logging);
+         let root = host.borrow().root();
+         host.borrow_mut().register_delegated_root(root);
+         let c: C = Rc::new(Ctx {
+@@ -2101,7 +2184,7 @@ impl App {
+                 .iter()
+                 .map(|a| (a.name.clone(), a.clone()))
+                 .collect(),
+-            names: RefCell::new(HashMap::new()),
++            names: RefCell::new(HashMap::default()),
+             requests: Rc::new(RefCell::new(vec![])),
+             fatal: Rc::new(RefCell::new(None)),
+             started: Rc::new(RefCell::new(vec![])),
+diff --git a/rust-solid/crates/runtime/src/renderer.rs b/rust-solid/crates/runtime/src/renderer.rs
+index ba045c2..7744637 100644
+--- a/rust-solid/crates/runtime/src/renderer.rs
++++ b/rust-solid/crates/runtime/src/renderer.rs
+@@ -178,7 +178,12 @@ struct TNode {
+     tag: Option<String>,
+     /// A text node's value as the host received it (a string or a number).
+     text: Value,
+-    children: Vec<Node>,
++    /// Children as a doubly linked sibling list, so `insertBefore` and
++    /// `removeChild` are O(1), as in a real tree.
++    first: Option<Node>,
++    last: Option<Node>,
++    prev: Option<Node>,
++    next: Option<Node>,
+     parent: Option<Node>,
+     /// Properties set on the node: `setProperty` of a non-event name, and
+     /// the delegation's expandos (`_$$click`, `_$$clickData`).
+@@ -194,7 +199,10 @@ impl Default for TNode {
+         TNode {
+             tag: None,
+             text: Value::Undef,
+-            children: vec![],
++            first: None,
++            last: None,
++            prev: None,
++            next: None,
+             parent: None,
+             props: vec![],
+             listeners: vec![],
+@@ -212,6 +220,8 @@ impl Default for TNode {
+ pub struct TreeRenderer {
+     nodes: Vec<TNode>,
+     log: RefCell<Vec<J>>,
++    /// Off: host calls are not recorded (benchmarks; no oracle to compare).
++    logging: std::cell::Cell<bool>,
+     /// Function identities, numbered in first-logged order.
+     fn_ids: RefCell<HashMap<(u8, u64), usize>>,
+     delegation: Delegation,
+@@ -232,6 +242,7 @@ impl TreeRenderer {
+                 ..TNode::default()
+             }],
+             log: RefCell::new(vec![]),
++            logging: std::cell::Cell::new(true),
+             fn_ids: RefCell::new(HashMap::new()),
+             delegation: Delegation::default(),
+         }
+@@ -249,6 +260,14 @@ impl TreeRenderer {
+     pub fn push_log(&self, entry: J) {
+         self.log.borrow_mut().push(entry);
+     }
++    pub fn set_logging(&self, on: bool) {
++        self.logging.set(on);
++    }
++    fn log_with(&self, entry: impl FnOnce() -> J) {
++        if self.logging.get() {
++            self.log.borrow_mut().push(entry());
++        }
++    }
+     pub fn take_log(&mut self) -> Vec<J> {
+         std::mem::take(&mut *self.log.borrow_mut())
+     }
+@@ -292,7 +311,7 @@ impl TreeRenderer {
+             Some(tag) => json!([
+                 node,
+                 tag,
+-                n.children.iter().map(|c| self.tree(*c)).collect::<Vec<_>>()
++                self.kids(node).map(|c| self.tree(c)).collect::<Vec<_>>()
+             ]),
+             None => json!([node, self.enc(&n.text)]),
+         }
+@@ -301,12 +320,49 @@ impl TreeRenderer {
+     pub fn frame(&self, node: Node) -> String {
+         let n = &self.nodes[node];
+         match &n.tag {
+-            Some(_) => n.children.iter().map(|c| self.frame(*c)).collect(),
++            Some(_) => self.kids(node).map(|c| self.frame(c)).collect(),
+             None => n.text.to_js_string().unwrap_or_default(),
+         }
+     }
+-    pub fn children(&self, node: Node) -> &[Node] {
+-        &self.nodes[node].children
++    pub fn children(&self, node: Node) -> Vec<Node> {
++        self.kids(node).collect()
++    }
++    fn kids(&self, node: Node) -> impl Iterator<Item = Node> + '_ {
++        std::iter::successors(self.nodes[node].first, move |&c| self.nodes[c].next)
++    }
++    /// Takes `node` out of its parent's sibling list.
++    fn unlink(&mut self, node: Node) {
++        let Some(p) = self.nodes[node].parent else {
++            return;
++        };
++        let (prev, next) = (self.nodes[node].prev, self.nodes[node].next);
++        match prev {
++            Some(x) => self.nodes[x].next = next,
++            None => self.nodes[p].first = next,
++        }
++        match next {
++            Some(x) => self.nodes[x].prev = prev,
++            None => self.nodes[p].last = prev,
++        }
++        let n = &mut self.nodes[node];
++        (n.parent, n.prev, n.next) = (None, None, None);
++    }
++    /// Puts `node` (unlinked) before `reference`, or last.
++    fn link(&mut self, parent: Node, node: Node, reference: Option<Node>) {
++        let prev = match reference {
++            Some(r) => self.nodes[r].prev,
++            None => self.nodes[parent].last,
++        };
++        match reference {
++            Some(r) => self.nodes[r].prev = Some(node),
++            None => self.nodes[parent].last = Some(node),
++        }
++        match prev {
++            Some(x) => self.nodes[x].next = Some(node),
++            None => self.nodes[parent].first = Some(node),
++        }
++        let n = &mut self.nodes[node];
++        (n.parent, n.prev, n.next) = (Some(parent), prev, reference);
+     }
+     pub fn tag(&self, node: Node) -> Option<&str> {
+         self.nodes[node].tag.as_deref()
+@@ -338,8 +394,8 @@ impl TreeRenderer {
+         if self.handles(root, ty) {
+             out.push(root);
+         }
+-        for c in &self.nodes[root].children {
+-            out.extend(self.handlers_of(*c, ty));
++        for c in self.kids(root).collect::<Vec<_>>() {
++            out.extend(self.handlers_of(c, ty));
+         }
+         out
+     }
+@@ -409,7 +465,7 @@ impl Renderer for TreeRenderer {
+             tag: Some(tag.into()),
+             ..TNode::default()
+         });
+-        self.push_log(json!(["createElement", tag, id]));
++        self.log_with(|| json!(["createElement", tag, id]));
+         id
+     }
+     fn create_text(&mut self, text: &str) -> Node {
+@@ -424,14 +480,14 @@ impl Renderer for TreeRenderer {
+             text: value.clone(),
+             ..TNode::default()
+         });
+-        self.push_log(json!(["createTextNode", self.enc(value), id]));
++        self.log_with(|| json!(["createTextNode", self.enc(value), id]));
+         id
+     }
+     fn replace_text(&mut self, node: Node, text: &str) {
+         self.replace_text_value(node, &Value::str(text))
+     }
+     fn replace_text_value(&mut self, node: Node, value: &Value) {
+-        self.push_log(json!(["replaceText", node, self.enc(value)]));
++        self.log_with(|| json!(["replaceText", node, self.enc(value)]));
+         assert!(self.nodes[node].tag.is_none(), "replaceText of an element");
+         self.nodes[node].text = value.clone();
+     }
+@@ -442,7 +498,7 @@ impl Renderer for TreeRenderer {
+     /// through Solid's `assignProp` event arm (`events::assign_event_prop`,
+     /// with the host's `prevProps` of that prop); any other is stored.
+     fn set_property(&mut self, node: Node, name: &str, value: &Value, prev: &Value) {
+-        self.push_log(json!([
++        self.log_with(|| json!([
+             "setProperty",
+             node,
+             name,
+@@ -468,7 +524,7 @@ impl Renderer for TreeRenderer {
+     }
+     /// `insertNode(parent, node, anchor)`: DOM `insertBefore`.
+     fn insert(&mut self, parent: Node, node: Node, anchor: Option<Node>) {
+-        self.push_log(json!(["insertNode", parent, node, Self::opt(anchor)]));
++        self.log_with(|| json!(["insertNode", parent, node, Self::opt(anchor)]));
+         if let Some(a) = anchor {
+             assert_eq!(
+                 self.nodes[a].parent,
+@@ -479,58 +535,39 @@ impl Renderer for TreeRenderer {
+         // "If referenceChild is node, set it to node's next sibling."
+         let mut reference = anchor;
+         if reference == Some(node) {
+-            let ns = &self.nodes[parent].children;
+-            reference = ns
+-                .get(ns.iter().position(|n| *n == node).unwrap() + 1)
+-                .copied();
+-        }
+-        if let Some(old) = self.nodes[node].parent {
+-            let ns = &mut self.nodes[old].children;
+-            let at = ns.iter().position(|n| *n == node).unwrap();
+-            ns.remove(at);
++            reference = self.nodes[node].next;
+         }
+-        let ns = &mut self.nodes[parent].children;
+-        let at = match reference {
+-            Some(r) => ns.iter().position(|n| *n == r).unwrap(),
+-            None => ns.len(),
+-        };
+-        ns.insert(at, node);
+-        self.nodes[node].parent = Some(parent);
++        self.unlink(node);
++        self.link(parent, node, reference);
+     }
+     /// `removeNode(parent, node)`: DOM `removeChild`.
+     fn remove(&mut self, parent: Node, node: Node) {
+-        self.push_log(json!(["removeNode", parent, node]));
++        self.log_with(|| json!(["removeNode", parent, node]));
+         assert_eq!(
+             self.nodes[node].parent,
+             Some(parent),
+             "removeChild: not a child (NotFoundError)"
+         );
+-        let ns = &mut self.nodes[parent].children;
+-        let at = ns.iter().position(|n| *n == node).unwrap();
+-        ns.remove(at);
+-        self.nodes[node].parent = None;
++        self.unlink(node);
+     }
+     fn parent(&self, node: Node) -> Option<Node> {
+         let r = self.nodes[node].parent;
+-        self.push_log(json!(["getParentNode", node, Self::opt(r)]));
++        self.log_with(|| json!(["getParentNode", node, Self::opt(r)]));
+         r
+     }
+     fn next_sibling(&self, node: Node) -> Option<Node> {
+-        let r = self.nodes[node].parent.and_then(|p| {
+-            let ns = &self.nodes[p].children;
+-            ns.get(ns.iter().position(|n| *n == node)? + 1).copied()
+-        });
+-        self.push_log(json!(["getNextSibling", node, Self::opt(r)]));
++        let r = self.nodes[node].next;
++        self.log_with(|| json!(["getNextSibling", node, Self::opt(r)]));
+         r
+     }
+     fn first_child(&self, node: Node) -> Option<Node> {
+-        let r = self.nodes[node].children.first().copied();
+-        self.push_log(json!(["getFirstChild", node, Self::opt(r)]));
++        let r = self.nodes[node].first;
++        self.log_with(|| json!(["getFirstChild", node, Self::opt(r)]));
+         r
+     }
+     fn is_text(&self, node: Node) -> bool {
+         let r = self.nodes[node].tag.is_none();
+-        self.push_log(json!(["isTextNode", node, r]));
++        self.log_with(|| json!(["isTextNode", node, r]));
+         r
+     }
+     fn event(&mut self, _node: Node, _name: &str, _handler: &str) {
+@@ -566,7 +603,7 @@ impl EventHost for TreeRenderer {
+     /// DOM `addEventListener`: a listener already attached for the name is
+     /// not added again.
+     fn add_event_listener(&mut self, node: Node, name: &str, listener: Listener) {
+-        self.push_log(json!([
++        self.log_with(|| json!([
+             "addEventListener",
+             node,
+             name,
+@@ -578,7 +615,7 @@ impl EventHost for TreeRenderer {
+         }
+     }
+     fn remove_event_listener(&mut self, node: Node, name: &str, listener: &Listener) {
+-        self.push_log(json!([
++        self.log_with(|| json!([
+             "removeEventListener",
+             node,
+             name,
+diff --git a/rust-solid/crates/runtime/src/slice1/map.rs b/rust-solid/crates/runtime/src/slice1/map.rs
+index 18f223b..06ebadb 100644
+--- a/rust-solid/crates/runtime/src/slice1/map.rs
++++ b/rust-solid/crates/runtime/src/slice1/map.rs
+@@ -473,7 +473,7 @@ impl Runtime {
+         } else {
+             // 0) a map of all indices in the changed window of newItems,
+             // scanned backwards so they chain in natural order
+-            let mut new_indices: Vec<(Value, i64)> = vec![];
++            let mut new_indices: FxMap<Value, i64> = FxMap::with_capacity_and_hasher(w_len, Default::default());
+             let mut new_indices_next: Vec<i64> = vec![0; w_len];
+             let mut j = new_end;
+             while j >= start {
+@@ -919,15 +919,12 @@ impl Runtime {
+ /// `Map.prototype.get` (SameValueZero; the keys here are integers and
+ /// objects, compared as `===`).
+ // Solid: map.ts:633, 644 (`newIndices.get`)
+-fn map_get(m: &[(Value, i64)], k: &Value) -> Option<i64> {
+-    m.iter().find(|(x, _)| x == k).map(|(_, v)| *v)
++fn map_get(m: &FxMap<Value, i64>, k: &Value) -> Option<i64> {
++    m.get(k).copied()
+ }
+ 
+ /// `Map.prototype.set` (an existing key keeps its position).
+ // Solid: map.ts:635, 651 (`newIndices.set`)
+-fn map_set(m: &mut Vec<(Value, i64)>, k: Value, v: i64) {
+-    match m.iter_mut().find(|(x, _)| *x == k) {
+-        Some(e) => e.1 = v,
+-        None => m.push((k, v)),
+-    }
++fn map_set(m: &mut FxMap<Value, i64>, k: Value, v: i64) {
++    m.insert(k, v);
+ }
+diff --git a/rust-solid/crates/runtime/src/slice1/mod.rs b/rust-solid/crates/runtime/src/slice1/mod.rs
+index 4819f0f..af86585 100644
+--- a/rust-solid/crates/runtime/src/slice1/mod.rs
++++ b/rust-solid/crates/runtime/src/slice1/mod.rs
+@@ -50,6 +50,29 @@ pub use flow::{Component, ForProps, Getter, ShowProps};
+ pub use function::FnBody;
+ pub use map::{FallbackFn, KeyFn, Keyed, ListFn, MapArg, MapFn};
+ use std::{collections::VecDeque, rc::Rc};
++
++/// FxHash for identity-keyed tables (function ids, raw object ids): read on
++/// every call and store access, where SipHash's DoS resistance buys nothing.
++#[derive(Default, Clone, Copy)]
++pub(crate) struct Fx(u64);
++impl std::hash::Hasher for Fx {
++    fn write(&mut self, bytes: &[u8]) {
++        for &b in bytes {
++            self.write_u64(b as u64);
++        }
++    }
++    fn write_u64(&mut self, i: u64) {
++        self.0 = (self.0.rotate_left(5) ^ i).wrapping_mul(0x51_7c_c1_b7_27_22_0a_95);
++    }
++    fn write_usize(&mut self, i: usize) {
++        self.write_u64(i as u64);
++    }
++    fn finish(&self) -> u64 {
++        self.0
++    }
++}
++pub(crate) type FxBuild = std::hash::BuildHasherDefault<Fx>;
++pub(crate) type FxMap<K, V> = std::collections::HashMap<K, V, FxBuild>;
+ pub use store::StoreKey;
+ pub use universal::{Disposer, InsertOptions, Marker, OnUpdate, Universal};
+ pub use value::{from_json, new_host_fn, Builtin, JsObj, Key, Obj, Value};
+@@ -495,7 +518,7 @@ pub struct Runtime {
+     /// User comparators (`options.equals`), by registration.
+     comparators: Vec<EqualsFn>,
+     /// Host-made function values (function.rs), by identity.
+-    functions: std::collections::HashMap<u64, function::JsFunction>,
++    functions: FxMap<u64, function::JsFunction>,
+     /// Debugging aid: `SLICE1_TRACE` prints scheduler events to stderr in
+     /// the format of the instrumented Solid copy (docs/slice2a-fuzz).
+     trace: bool,
+diff --git a/rust-solid/crates/runtime/src/slice1/store/mod.rs b/rust-solid/crates/runtime/src/slice1/store/mod.rs
+index 803e88b..f50589b 100644
+--- a/rust-solid/crates/runtime/src/slice1/store/mod.rs
++++ b/rust-solid/crates/runtime/src/slice1/store/mod.rs
+@@ -24,7 +24,7 @@ pub(super) mod target;
+ pub(super) mod types;
+ 
+ use super::*;
+-use std::{cell::RefCell, collections::HashMap};
++use std::cell::RefCell;
+ use target::{Family, StoreTarget};
+ 
+ /// A family's row key option (`options.key`): a field name (`"id"` by
+@@ -187,7 +187,7 @@ pub(in crate::slice1) struct StoreState {
+     pub targets: Vec<StoreTarget>,
+     pub families: Vec<Family>,
+     /// target.ts `storeLookup` (raw → target for family-less stores).
+-    pub lookup: HashMap<u64, TargetId>,
++    pub lookup: FxMap<u64, TargetId>,
+     // store.ts
+     pub deferred_releases: OrdSet<NodeId>,
+     pub fold_list: Vec<TargetId>,
+@@ -199,11 +199,11 @@ pub(in crate::slice1) struct StoreState {
+     pub write_scopes: Option<Vec<ScopeKey>>,
+     pub pending_notify: OrdSet<TargetId>,
+     /// `frameRaws`: `Object.values(frame)` per frame, by identity.
+-    pub frame_raws: HashMap<u64, Vec<Value>>,
++    pub frame_raws: FxMap<u64, Vec<Value>>,
+     // types.ts
+     pub write_override: bool,
+     /// `rawValues` (a WeakSet, by identity) and `rawValuesUsed`.
+-    pub raw_values: std::collections::HashSet<u64>,
++    pub raw_values: std::collections::HashSet<u64, FxBuild>,
+     pub raw_values_used: bool,
+     // optimistic.ts
+     pub opt_staged: Vec<(TargetId, Obj)>,
+diff --git a/rust-solid/crates/runtime/src/slice1/store/projection.rs b/rust-solid/crates/runtime/src/slice1/store/projection.rs
+index 9bb7a5a..b4b97a6 100644
+--- a/rust-solid/crates/runtime/src/slice1/store/projection.rs
++++ b/rust-solid/crates/runtime/src/slice1/store/projection.rs
+@@ -12,7 +12,6 @@ use super::super::value::DraftProxy;
+ use super::super::*;
+ use super::target::Family;
+ use super::{OrdSet, StoreKey};
+-use std::collections::HashMap;
+ 
+ /// One derive pass's closure state (`runProjectionComputed`'s locals the
+ /// flight's `commit` and `onError` close over).
+@@ -349,7 +348,7 @@ impl Runtime {
+             overlaid: None,
+             asked: None,
+             key: key_option.clone(),
+-            map: HashMap::new(),
++            map: Default::default(),
+             node: None,
+             live: OrdSet::default(),
+             shallow: false,
+diff --git a/rust-solid/crates/runtime/src/slice1/store/target.rs b/rust-solid/crates/runtime/src/slice1/store/target.rs
+index c1b808d..8fc6954 100644
+--- a/rust-solid/crates/runtime/src/slice1/store/target.rs
++++ b/rust-solid/crates/runtime/src/slice1/store/target.rs
+@@ -2,7 +2,6 @@
+ //! raw → target lookup.
+ use super::super::*;
+ use super::{KeyMap, OrdSet, Wk};
+-use std::collections::HashMap;
+ 
+ /// Solid: target.ts:64-133 `StoreTarget` (the proxy's handler, built by
+ /// store.ts `TargetShape`). The proxy is `Value::Proxy(id)`; `shell_array`
+@@ -41,7 +40,7 @@ pub(in crate::slice1) struct Family {
+     pub asked: Option<i64>,
+     pub key: FamKey,
+     /// `map`: raw (or a draft wrapper) → target, by identity.
+-    pub map: HashMap<u64, TargetId>,
++    pub map: FxMap<u64, TargetId>,
+     pub node: Option<NodeId>,
+     pub live: OrdSet<TargetId>,
+     pub shallow: bool,
+diff --git a/rust-solid/crates/runtime/src/slice1/universal.rs b/rust-solid/crates/runtime/src/slice1/universal.rs
+index 8a5203b..2427b5e 100644
+--- a/rust-solid/crates/runtime/src/slice1/universal.rs
++++ b/rust-solid/crates/runtime/src/slice1/universal.rs
+@@ -430,13 +430,12 @@ impl<R: Renderer + 'static> Universal<R> {
+         let mut a_start: isize = 0;
+         let mut b_start: isize = 0;
+         let after = self.get_next_sibling(&at(a, a_end - 1));
+-        let mut map: Option<Vec<(Value, isize)>> = None;
++        let mut map: Option<FxMap<Value, isize>> = None;
+ 
+         // `const isLive = n => n && getParentNode(n) === parentNode;`
+         let is_live = |n: &Value| n.truthy() && self.get_parent_node(n) == Value::Node(parent_node);
+-        let map_get = |map: &Option<Vec<(Value, isize)>>, k: &Value| -> Option<isize> {
+-            map.as_ref()
+-                .and_then(|m| m.iter().find(|(x, _)| x == k).map(|(_, i)| *i))
++        let map_get = |map: &Option<FxMap<Value, isize>>, k: &Value| -> Option<isize> {
++            map.as_ref().and_then(|m| m.get(k).copied())
+         };
+ 
+         while a_start < a_end || b_start < b_end {
+@@ -492,14 +491,10 @@ impl<R: Renderer + 'static> Universal<R> {
+             } else {
+                 if map.is_none() {
+                     // `map.set(b[i], i++)`: a later duplicate overwrites.
+-                    let mut m: Vec<(Value, isize)> = vec![];
++                    let mut m = FxMap::with_capacity_and_hasher((b_end - b_start) as usize, Default::default());
+                     let mut i = b_start;
+                     while i < b_end {
+-                        let k = at(b, i);
+-                        match m.iter_mut().find(|(x, _)| *x == k) {
+-                            Some(slot) => slot.1 = i,
+-                            None => m.push((k, i)),
+-                        }
++                        m.insert(at(b, i), i);
+                         i += 1;
+                     }
+                     map = Some(m);
+diff --git a/rust-solid/crates/runtime/src/slice1/value.rs b/rust-solid/crates/runtime/src/slice1/value.rs
+index c39388e..1f0dce4 100644
+--- a/rust-solid/crates/runtime/src/slice1/value.rs
++++ b/rust-solid/crates/runtime/src/slice1/value.rs
+@@ -242,6 +242,29 @@ impl PartialEq for Value {
+     }
+ }
+ 
++impl Eq for Value {}
++
++/// Consistent with `eq`: objects by identity, strings by content. Lets a JS
++/// `Map` keyed by values (map.ts `newIndices`, universal.ts `reconcileArrays`)
++/// be a hash map instead of a linear scan.
++impl std::hash::Hash for Value {
++    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
++        std::mem::discriminant(self).hash(h);
++        match self {
++            Value::Bool(b) => b.hash(h),
++            Value::Int(i) => i.hash(h),
++            Value::Obj(a) => (Rc::as_ptr(a) as *const () as usize).hash(h),
++            Value::Proxy(t) => t.hash(h),
++            Value::Draft(a) => (Rc::as_ptr(a) as *const () as usize).hash(h),
++            Value::View(a) => (Rc::as_ptr(a) as *const () as usize).hash(h),
++            Value::Func(b) => b.hash(h),
++            Value::Str(s) => s.hash(h),
++            Value::Node(n) => n.hash(h),
++            Value::Undef | Value::NotPending => {}
++        }
++    }
++}
++
+ impl fmt::Debug for Value {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         match self {
+@@ -295,13 +318,109 @@ pub type Obj = Rc<JsObj>;
+ /// absent keys) and `len` its `length`.
+ #[derive(Clone, Default)]
+ pub struct Props {
+-    pub idx: BTreeMap<u32, Value>,
++    pub idx: Elems,
+     pub len: u32,
+     pub names: Vec<(Rc<str>, Value)>,
+     /// The `$OWNER` stamp (store/target.ts): the owning target.
+     pub owner: Option<TargetId>,
+ }
+ 
++/// Integer-keyed own properties: dense slots (`None` is a hole) up to the
++/// first gap too wide to fill, a sorted map past it. Every sparse key is at
++/// least the dense length, so keys come out in ascending order.
++#[derive(Clone, Default)]
++pub struct Elems {
++    dense: Vec<Option<Value>>,
++    sparse: BTreeMap<u32, Value>,
++    count: usize,
++}
++
++/// How many holes a write may open at the end of the dense part.
++const ELEMS_SLACK: usize = 64;
++
++impl Elems {
++    pub fn get(&self, i: &u32) -> Option<&Value> {
++        match self.dense.get(*i as usize) {
++            Some(v) => v.as_ref(),
++            None => self.sparse.get(i),
++        }
++    }
++    pub fn contains_key(&self, i: &u32) -> bool {
++        self.get(i).is_some()
++    }
++    pub fn len(&self) -> usize {
++        self.count
++    }
++    pub fn is_empty(&self) -> bool {
++        self.count == 0
++    }
++    pub fn insert(&mut self, i: u32, v: Value) -> Option<Value> {
++        let at = i as usize;
++        let old = if at < self.dense.len() {
++            self.dense[at].replace(v)
++        } else if at <= self.dense.len() + ELEMS_SLACK {
++            self.dense.resize(at, None);
++            self.dense.push(Some(v));
++            let old = self.sparse.remove(&i);
++            // Keys the dense part now covers move into it.
++            while let Some(e) = self.sparse.first_entry() {
++                if (*e.key() as usize) >= self.dense.len() {
++                    break;
++                }
++                let (k, x) = e.remove_entry();
++                self.dense[k as usize] = Some(x);
++            }
++            old
++        } else {
++            self.sparse.insert(i, v)
++        };
++        if old.is_none() {
++            self.count += 1;
++        }
++        old
++    }
++    pub fn remove(&mut self, i: &u32) -> Option<Value> {
++        let old = match self.dense.get_mut(*i as usize) {
++            Some(slot) => slot.take(),
++            None => self.sparse.remove(i),
++        };
++        if old.is_some() {
++            self.count -= 1;
++        }
++        old
++    }
++    pub fn retain(&mut self, mut f: impl FnMut(&u32, &mut Value) -> bool) {
++        for (k, slot) in self.dense.iter_mut().enumerate() {
++            if let Some(v) = slot {
++                if !f(&(k as u32), v) {
++                    *slot = None;
++                    self.count -= 1;
++                }
++            }
++        }
++        let before = self.sparse.len();
++        self.sparse.retain(|k, v| f(k, v));
++        self.count -= before - self.sparse.len();
++    }
++    /// The keys, ascending.
++    pub fn keys(&self) -> impl Iterator<Item = u32> + '_ {
++        self.dense
++            .iter()
++            .enumerate()
++            .filter(|(_, v)| v.is_some())
++            .map(|(k, _)| k as u32)
++            .chain(self.sparse.keys().copied())
++    }
++    fn from_vec(items: Vec<Value>) -> Self {
++        let count = items.len();
++        Elems {
++            dense: items.into_iter().map(Some).collect(),
++            sparse: BTreeMap::new(),
++            count,
++        }
++    }
++}
++
+ impl JsObj {
+     fn make(array: bool, props: Props) -> Obj {
+         Rc::new(JsObj {
+@@ -312,12 +431,18 @@ impl JsObj {
+     }
+     pub fn new_array(items: Vec<Value>) -> Obj {
+         let mut p = Props::default();
+-        for (i, v) in items.into_iter().enumerate() {
+-            p.idx.insert(i as u32, v);
+-        }
++        p.idx = Elems::from_vec(items);
+         p.len = p.idx.len() as u32;
+         JsObj::make(true, p)
+     }
++    /// `new_object` with the keys already made.
++    pub fn new_object_keyed(fields: Vec<(Key, Value)>) -> Obj {
++        let o = JsObj::make(false, Props::default());
++        for (k, v) in fields {
++            o.set(&k, v);
++        }
++        o
++    }
+     pub fn new_object(fields: Vec<(Rc<str>, Value)>) -> Obj {
+         let o = JsObj::make(false, Props::default());
+         for (k, v) in fields {
+@@ -399,7 +524,7 @@ impl JsObj {
+     /// `Reflect.ownKeys(o)` without the `$OWNER` symbol.
+     pub fn own_keys(&self) -> Vec<Key> {
+         let p = self.props.borrow();
+-        let mut keys: Vec<Key> = p.idx.keys().map(|i| Key::Idx(*i)).collect();
++        let mut keys: Vec<Key> = p.idx.keys().map(Key::Idx).collect();
+         if self.array {
+             keys.push(Key::Name("length".into()));
+         }
+diff --git a/rust-solid/crates/runtime/src/ssr/plan.rs b/rust-solid/crates/runtime/src/ssr/plan.rs
+index 3a5b4b0..9f4c841 100644
+--- a/rust-solid/crates/runtime/src/ssr/plan.rs
++++ b/rust-solid/crates/runtime/src/ssr/plan.rs
+@@ -257,7 +257,7 @@ impl Ctx {
+ 
+     fn ty(&self, e: &Expr, locals: &Types) -> Ty {
+         match e {
+-            Expr::Literal { value } => literal_ty(value),
++            Expr::Literal { value, .. } => literal_ty(value),
+             Expr::Array { items } => Ty::Arr(Box::new(
+                 items
+                     .iter()
+@@ -273,7 +273,7 @@ impl Ctx {
+             ),
+             Expr::Read { source } => self.types.get(source).cloned().unwrap_or(Ty::Unknown),
+             Expr::Local { name } => locals.get(name).cloned().unwrap_or(Ty::Unknown),
+-            Expr::Get { object, key } => match self.ty(object, locals) {
++            Expr::Get { object, key, .. } => match self.ty(object, locals) {
+                 Ty::Rec(fields) => fields
+                     .into_iter()
+                     .find(|(k, _)| k == key)
+@@ -408,7 +408,7 @@ impl Ctx {
+                     self.check_views(children, locals)?;
+                 }
+                 View::Text {
+-                    value: Expr::Literal { value },
++                    value: Expr::Literal { value, .. },
+                 } => {
+                     raw_text(value)?;
+                 }
+@@ -481,7 +481,7 @@ fn konst_truthy(k: &Konst) -> bool {
+ 
+ fn confident(e: &Expr) -> Option<Konst> {
+     match e {
+-        Expr::Literal { value } => match value {
++        Expr::Literal { value, .. } => match value {
+             J::String(s) => Some(Konst::Str(s.clone())),
+             J::Number(n) => n.as_i64().map(Konst::Num),
+             J::Bool(b) => Some(Konst::Bool(*b)),
+@@ -691,7 +691,7 @@ fn with(env: &Env, name: &str, v: JsVal) -> Env {
+ 
+ fn eval(s: &mut Server, c: &Ctx, e: &Expr, env: &Env) -> Res<JsVal> {
+     match e {
+-        Expr::Literal { value } => literal(value),
++        Expr::Literal { value, .. } => literal(value),
+         Expr::Array { items } => {
+             let mut out = vec![];
+             for x in items {
+@@ -711,7 +711,7 @@ fn eval(s: &mut Server, c: &Ctx, e: &Expr, env: &Env) -> Res<JsVal> {
+             Some(v) => Ok(v.clone()),
+             None => fail(format!("unbound local {name}")),
+         },
+-        Expr::Get { object, key } => match eval(s, c, object, env)? {
++        Expr::Get { object, key, .. } => match eval(s, c, object, env)? {
+             JsVal::Rec(r) => {
+                 let found = r
+                     .borrow()
+@@ -949,7 +949,7 @@ fn lower<'v>(v: &'v View, root: bool, parts: &mut Vec<String>, holes: &mut Vec<H
+     for child in children {
+         match child {
+             View::Text {
+-                value: Expr::Literal { value },
++                value: Expr::Literal { value, .. },
+             } => {
+                 let t = raw_text(value).expect("checked before rendering");
+                 parts.last_mut().expect("a part").push_str(&t);
