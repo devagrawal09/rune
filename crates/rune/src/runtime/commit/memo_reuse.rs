@@ -769,12 +769,17 @@ impl crate::memo::MemoCache {
         };
         // Nested memos inside an outer memo that was reused whole stay live at their rebased index.
         if !self.flattened.is_empty() {
+            // Sorted by old start so each memo finds its span by binary search, not a scan of
+            // every span (that scan made a commit with n reused memos O(n²)).
+            reused.sort_unstable_by_key(|s| s.old_start);
+            let contains = |s: &ReusedSpan, flat: &FlattenedMemo| {
+                flat.start >= s.old_start && flat.start + flat.len <= s.old_start + s.len
+            };
             self.flattened.retain(|_, flat| {
-                let Some(span) = reused.iter().find(|s| {
-                    flat.start >= s.old_start && flat.start + flat.len <= s.old_start + s.len
-                }) else {
-                    return false;
-                };
+                let at = reused.partition_point(|s| s.old_start <= flat.start);
+                let span = at.checked_sub(1).map(|i| &reused[i]).filter(|s| contains(s, flat))
+                    .or_else(|| reused.iter().find(|s| contains(s, flat)));
+                let Some(span) = span else { return false };
                 flat.start = span.new_start + (flat.start - span.old_start);
                 if !span.same_path {
                     flat.root_id = nodes[flat.start].id;
