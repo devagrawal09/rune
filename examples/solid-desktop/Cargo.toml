@@ -1,0 +1,14 @@
+[package]
+name = "solid-desktop"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+description = "Desktop apps written in Solid TSX, compiled to plans, run by rust-solid and drawn by Rune."
+
+[dependencies]
+rune = { workspace = true, default-features = true, features = ["tooling", "keys-overlay"] }
+rust-solid = { path = "../../../reactivescript/rust-solid/crates/runtime" }
+serde_json = { version = "1", features = ["preserve_order"] }
+
+[lints]
+workspace = true

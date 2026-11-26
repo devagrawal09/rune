@@ -1,0 +1,1797 @@
+{
+  "version": 2.3,
+  "component": "Issues",
+  "hosts": [
+    {
+      "name": "loadIssue",
+      "params": [
+        "number"
+      ],
+      "returns": "{ id: number, title: string, body: string, open: boolean, author: string, comments: { id: number, author: string, body: string }[] }",
+      "pure": true
+    },
+    {
+      "name": "postComment",
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "searchIssues",
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "{ id: number, title: string, label: string, open: boolean, comments: number }[]",
+      "pure": true
+    },
+    {
+      "name": "setOpen",
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "boolean"
+    }
+  ],
+  "sources": [
+    {
+      "name": "query",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "state",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": "open"
+      }
+    },
+    {
+      "name": "selected",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": 0
+      }
+    },
+    {
+      "name": "draft",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "status",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "shown",
+      "kind": "optimistic",
+      "seed": {
+        "op": "read",
+        "source": "found"
+      }
+    }
+  ],
+  "memos": [
+    {
+      "name": "found",
+      "await": {
+        "host": "searchIssues",
+        "args": [
+          {
+            "op": "read",
+            "source": "query"
+          },
+          {
+            "op": "read",
+            "source": "state"
+          }
+        ]
+      }
+    },
+    {
+      "name": "issue",
+      "await": {
+        "host": "loadIssue",
+        "args": [
+          {
+            "op": "read",
+            "source": "selected"
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "toggle",
+      "params": [
+        "id",
+        "open"
+      ],
+      "steps": [
+        {
+          "op": "optimistic",
+          "source": "shown",
+          "updater": {
+            "param": "list",
+            "body": {
+              "op": "filter",
+              "array": {
+                "op": "local",
+                "name": "list"
+              },
+              "param": "i",
+              "body": {
+                "op": "ne",
+                "left": {
+                  "op": "get",
+                  "object": {
+                    "op": "local",
+                    "name": "i"
+                  },
+                  "key": "id"
+                },
+                "right": {
+                  "op": "local",
+                  "name": "id"
+                }
+              }
+            }
+          }
+        },
+        {
+          "op": "try",
+          "body": [
+            {
+              "op": "await",
+              "host": "setOpen",
+              "args": [
+                {
+                  "op": "local",
+                  "name": "id"
+                },
+                {
+                  "op": "local",
+                  "name": "open"
+                }
+              ],
+              "bind": "$await0"
+            },
+            {
+              "op": "refresh",
+              "source": "found"
+            },
+            {
+              "op": "refresh",
+              "source": "issue"
+            },
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "cond",
+                "test": {
+                  "op": "local",
+                  "name": "open"
+                },
+                "then": {
+                  "op": "add",
+                  "left": {
+                    "op": "literal",
+                    "value": "Reopened #"
+                  },
+                  "right": {
+                    "op": "local",
+                    "name": "id"
+                  }
+                },
+                "else": {
+                  "op": "add",
+                  "left": {
+                    "op": "literal",
+                    "value": "Closed #"
+                  },
+                  "right": {
+                    "op": "local",
+                    "name": "id"
+                  }
+                }
+              }
+            }
+          ],
+          "catch": [
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "add",
+                "left": {
+                  "op": "literal",
+                  "value": "Could not update #"
+                },
+                "right": {
+                  "op": "local",
+                  "name": "id"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "comment",
+      "params": [],
+      "steps": [
+        {
+          "op": "affects",
+          "source": "issue"
+        },
+        {
+          "op": "try",
+          "body": [
+            {
+              "op": "await",
+              "host": "postComment",
+              "args": [
+                {
+                  "op": "read",
+                  "source": "selected"
+                },
+                {
+                  "op": "read",
+                  "source": "draft"
+                }
+              ],
+              "bind": "$await1"
+            },
+            {
+              "op": "write",
+              "source": "draft",
+              "value": {
+                "op": "literal",
+                "value": ""
+              }
+            },
+            {
+              "op": "refresh",
+              "source": "issue"
+            },
+            {
+              "op": "refresh",
+              "source": "found"
+            }
+          ],
+          "catch": [
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "literal",
+                "value": "Could not post that"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "markup": [
+    {
+      "kind": "element",
+      "tag": "main",
+      "attrs": [
+        {
+          "name": "class",
+          "value": {
+            "op": "literal",
+            "value": "app"
+          }
+        }
+      ],
+      "events": [],
+      "children": [
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "bar"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "h1",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "title"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Issues"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "span",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "spacer"
+                  }
+                }
+              ],
+              "events": [],
+              "children": []
+            },
+            {
+              "kind": "element",
+              "tag": "p",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "status"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "read",
+                    "source": "status"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "split"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "div",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "side"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "composer"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "element",
+                      "tag": "input",
+                      "attrs": [
+                        {
+                          "name": "id",
+                          "value": {
+                            "op": "literal",
+                            "value": "search"
+                          }
+                        },
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "field"
+                          }
+                        },
+                        {
+                          "name": "value",
+                          "value": {
+                            "op": "read",
+                            "source": "query"
+                          }
+                        },
+                        {
+                          "name": "placeholder",
+                          "value": {
+                            "op": "literal",
+                            "value": "Search issues"
+                          }
+                        },
+                        {
+                          "name": "onInput",
+                          "param": "e",
+                          "steps": [
+                            {
+                              "op": "write",
+                              "source": "query",
+                              "value": {
+                                "op": "get",
+                                "object": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "local",
+                                    "name": "e"
+                                  },
+                                  "key": "target"
+                                },
+                                "key": "value"
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      "events": [],
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "bar"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "element",
+                      "tag": "div",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "tabs"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "button",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "literal",
+                                "value": "tab-open"
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "cond",
+                                "test": {
+                                  "op": "eq",
+                                  "left": {
+                                    "op": "read",
+                                    "source": "state"
+                                  },
+                                  "right": {
+                                    "op": "literal",
+                                    "value": "open"
+                                  }
+                                },
+                                "then": {
+                                  "op": "literal",
+                                  "value": "tab on"
+                                },
+                                "else": {
+                                  "op": "literal",
+                                  "value": "tab"
+                                }
+                              }
+                            },
+                            {
+                              "name": "onClick",
+                              "steps": [
+                                {
+                                  "op": "write",
+                                  "source": "state",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "open"
+                                  }
+                                }
+                              ]
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "literal",
+                                "value": "Open"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "element",
+                          "tag": "button",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "literal",
+                                "value": "tab-closed"
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "cond",
+                                "test": {
+                                  "op": "eq",
+                                  "left": {
+                                    "op": "read",
+                                    "source": "state"
+                                  },
+                                  "right": {
+                                    "op": "literal",
+                                    "value": "closed"
+                                  }
+                                },
+                                "then": {
+                                  "op": "literal",
+                                  "value": "tab on"
+                                },
+                                "else": {
+                                  "op": "literal",
+                                  "value": "tab"
+                                }
+                              }
+                            },
+                            {
+                              "name": "onClick",
+                              "steps": [
+                                {
+                                  "op": "write",
+                                  "source": "state",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "closed"
+                                  }
+                                }
+                              ]
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "literal",
+                                "value": "Closed"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "element",
+                      "tag": "span",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "spacer"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": []
+                    },
+                    {
+                      "kind": "element",
+                      "tag": "small",
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "cond",
+                            "test": {
+                              "op": "pending",
+                              "value": {
+                                "op": "read",
+                                "source": "found"
+                              }
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": "Searching…"
+                            },
+                            "else": {
+                              "op": "literal",
+                              "value": ""
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "errored",
+                  "fallback": [
+                    {
+                      "kind": "element",
+                      "tag": "p",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "error"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "literal",
+                            "value": "Search failed "
+                          }
+                        },
+                        {
+                          "kind": "element",
+                          "tag": "button",
+                          "attrs": [
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "ghost"
+                              }
+                            },
+                            {
+                              "name": "onClick",
+                              "steps": [
+                                {
+                                  "op": "refresh",
+                                  "source": "found"
+                                }
+                              ]
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "literal",
+                                "value": "Retry"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "loading",
+                      "fallback": [
+                        {
+                          "kind": "element",
+                          "tag": "p",
+                          "attrs": [
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "muted"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "literal",
+                                "value": "Loading issues…"
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "show",
+                          "when": {
+                            "op": "gt",
+                            "left": {
+                              "op": "length",
+                              "array": {
+                                "op": "read",
+                                "source": "shown"
+                              }
+                            },
+                            "right": {
+                              "op": "literal",
+                              "value": 0
+                            }
+                          },
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "list"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "for",
+                                  "each": {
+                                    "op": "read",
+                                    "source": "shown"
+                                  },
+                                  "item": "i",
+                                  "key": "identity",
+                                  "children": [
+                                    {
+                                      "kind": "element",
+                                      "tag": "div",
+                                      "attrs": [
+                                        {
+                                          "name": "id",
+                                          "value": {
+                                            "op": "add",
+                                            "left": {
+                                              "op": "literal",
+                                              "value": "issue-"
+                                            },
+                                            "right": {
+                                              "op": "get",
+                                              "object": {
+                                                "op": "local",
+                                                "name": "i"
+                                              },
+                                              "key": "id"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "name": "class",
+                                          "value": {
+                                            "op": "cond",
+                                            "test": {
+                                              "op": "eq",
+                                              "left": {
+                                                "op": "get",
+                                                "object": {
+                                                  "op": "local",
+                                                  "name": "i"
+                                                },
+                                                "key": "id"
+                                              },
+                                              "right": {
+                                                "op": "read",
+                                                "source": "selected"
+                                              }
+                                            },
+                                            "then": {
+                                              "op": "literal",
+                                              "value": "item selected"
+                                            },
+                                            "else": {
+                                              "op": "literal",
+                                              "value": "item"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "name": "onClick",
+                                          "steps": [
+                                            {
+                                              "op": "write",
+                                              "source": "selected",
+                                              "value": {
+                                                "op": "get",
+                                                "object": {
+                                                  "op": "local",
+                                                  "name": "i"
+                                                },
+                                                "key": "id"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      ],
+                                      "events": [],
+                                      "children": [
+                                        {
+                                          "kind": "element",
+                                          "tag": "span",
+                                          "attrs": [
+                                            {
+                                              "name": "class",
+                                              "value": {
+                                                "op": "literal",
+                                                "value": "label"
+                                              }
+                                            }
+                                          ],
+                                          "events": [],
+                                          "children": [
+                                            {
+                                              "kind": "text",
+                                              "value": {
+                                                "op": "get",
+                                                "object": {
+                                                  "op": "local",
+                                                  "name": "i"
+                                                },
+                                                "key": "title"
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "kind": "element",
+                                          "tag": "div",
+                                          "attrs": [
+                                            {
+                                              "name": "class",
+                                              "value": {
+                                                "op": "literal",
+                                                "value": "meta"
+                                              }
+                                            }
+                                          ],
+                                          "events": [],
+                                          "children": [
+                                            {
+                                              "kind": "element",
+                                              "tag": "span",
+                                              "events": [],
+                                              "children": [
+                                                {
+                                                  "kind": "text",
+                                                  "value": {
+                                                    "op": "add",
+                                                    "left": {
+                                                      "op": "add",
+                                                      "left": {
+                                                        "op": "add",
+                                                        "left": {
+                                                          "op": "add",
+                                                          "left": {
+                                                            "op": "add",
+                                                            "left": {
+                                                              "op": "add",
+                                                              "left": {
+                                                                "op": "literal",
+                                                                "value": "#"
+                                                              },
+                                                              "right": {
+                                                                "op": "get",
+                                                                "object": {
+                                                                  "op": "local",
+                                                                  "name": "i"
+                                                                },
+                                                                "key": "id"
+                                                              }
+                                                            },
+                                                            "right": {
+                                                              "op": "literal",
+                                                              "value": "  ·  "
+                                                            }
+                                                          },
+                                                          "right": {
+                                                            "op": "get",
+                                                            "object": {
+                                                              "op": "local",
+                                                              "name": "i"
+                                                            },
+                                                            "key": "label"
+                                                          }
+                                                        },
+                                                        "right": {
+                                                          "op": "literal",
+                                                          "value": "  ·  "
+                                                        }
+                                                      },
+                                                      "right": {
+                                                        "op": "get",
+                                                        "object": {
+                                                          "op": "local",
+                                                          "name": "i"
+                                                        },
+                                                        "key": "comments"
+                                                      }
+                                                    },
+                                                    "right": {
+                                                      "op": "literal",
+                                                      "value": " comments"
+                                                    }
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ],
+                          "fallback": [
+                            {
+                              "kind": "element",
+                              "tag": "p",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "muted"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "No issues match"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "show",
+              "when": {
+                "op": "ne",
+                "left": {
+                  "op": "read",
+                  "source": "selected"
+                },
+                "right": {
+                  "op": "literal",
+                  "value": 0
+                }
+              },
+              "children": [
+                {
+                  "kind": "errored",
+                  "fallback": [
+                    {
+                      "kind": "element",
+                      "tag": "div",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "detail"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "p",
+                          "attrs": [
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "error"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "literal",
+                                "value": "Could not load this issue "
+                              }
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "button",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "ghost"
+                                  }
+                                },
+                                {
+                                  "name": "onClick",
+                                  "steps": [
+                                    {
+                                      "op": "refresh",
+                                      "source": "issue"
+                                    }
+                                  ]
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "Retry"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "loading",
+                      "fallback": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "detail"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "p",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "muted"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "Loading…"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "cond",
+                                "test": {
+                                  "op": "pending",
+                                  "value": {
+                                    "op": "read",
+                                    "source": "issue"
+                                  }
+                                },
+                                "then": {
+                                  "op": "literal",
+                                  "value": "detail stale"
+                                },
+                                "else": {
+                                  "op": "literal",
+                                  "value": "detail"
+                                }
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "bar"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "element",
+                                  "tag": "span",
+                                  "attrs": [
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "read",
+                                            "source": "issue"
+                                          },
+                                          "key": "open"
+                                        },
+                                        "then": {
+                                          "op": "literal",
+                                          "value": "badge open"
+                                        },
+                                        "else": {
+                                          "op": "literal",
+                                          "value": "badge closed"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "read",
+                                            "source": "issue"
+                                          },
+                                          "key": "open"
+                                        },
+                                        "then": {
+                                          "op": "literal",
+                                          "value": "Open"
+                                        },
+                                        "else": {
+                                          "op": "literal",
+                                          "value": "Closed"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "element",
+                                  "tag": "small",
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "add",
+                                        "left": {
+                                          "op": "add",
+                                          "left": {
+                                            "op": "add",
+                                            "left": {
+                                              "op": "literal",
+                                              "value": "#"
+                                            },
+                                            "right": {
+                                              "op": "get",
+                                              "object": {
+                                                "op": "read",
+                                                "source": "issue"
+                                              },
+                                              "key": "id"
+                                            }
+                                          },
+                                          "right": {
+                                            "op": "literal",
+                                            "value": " by "
+                                          }
+                                        },
+                                        "right": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "read",
+                                            "source": "issue"
+                                          },
+                                          "key": "author"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "element",
+                                  "tag": "span",
+                                  "attrs": [
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "spacer"
+                                      }
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": []
+                                },
+                                {
+                                  "kind": "show",
+                                  "when": {
+                                    "op": "get",
+                                    "object": {
+                                      "op": "read",
+                                      "source": "issue"
+                                    },
+                                    "key": "open"
+                                  },
+                                  "children": [
+                                    {
+                                      "kind": "element",
+                                      "tag": "button",
+                                      "attrs": [
+                                        {
+                                          "name": "id",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "close"
+                                          }
+                                        },
+                                        {
+                                          "name": "class",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "ghost"
+                                          }
+                                        },
+                                        {
+                                          "name": "onClick",
+                                          "steps": [
+                                            {
+                                              "op": "call",
+                                              "action": "toggle",
+                                              "args": [
+                                                {
+                                                  "op": "read",
+                                                  "source": "selected"
+                                                },
+                                                {
+                                                  "op": "literal",
+                                                  "value": false
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ],
+                                      "events": [],
+                                      "children": [
+                                        {
+                                          "kind": "text",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "Close issue"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "fallback": [
+                                    {
+                                      "kind": "element",
+                                      "tag": "button",
+                                      "attrs": [
+                                        {
+                                          "name": "id",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "reopen"
+                                          }
+                                        },
+                                        {
+                                          "name": "class",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "ghost"
+                                          }
+                                        },
+                                        {
+                                          "name": "onClick",
+                                          "steps": [
+                                            {
+                                              "op": "call",
+                                              "action": "toggle",
+                                              "args": [
+                                                {
+                                                  "op": "read",
+                                                  "source": "selected"
+                                                },
+                                                {
+                                                  "op": "literal",
+                                                  "value": true
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ],
+                                      "events": [],
+                                      "children": [
+                                        {
+                                          "kind": "text",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "Reopen"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "h2",
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "get",
+                                    "object": {
+                                      "op": "read",
+                                      "source": "issue"
+                                    },
+                                    "key": "title"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "p",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "body"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "get",
+                                    "object": {
+                                      "op": "read",
+                                      "source": "issue"
+                                    },
+                                    "key": "body"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "comments thread"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "for",
+                                  "each": {
+                                    "op": "get",
+                                    "object": {
+                                      "op": "read",
+                                      "source": "issue"
+                                    },
+                                    "key": "comments"
+                                  },
+                                  "item": "c",
+                                  "key": "identity",
+                                  "children": [
+                                    {
+                                      "kind": "element",
+                                      "tag": "div",
+                                      "attrs": [
+                                        {
+                                          "name": "id",
+                                          "value": {
+                                            "op": "add",
+                                            "left": {
+                                              "op": "literal",
+                                              "value": "comment-"
+                                            },
+                                            "right": {
+                                              "op": "get",
+                                              "object": {
+                                                "op": "local",
+                                                "name": "c"
+                                              },
+                                              "key": "id"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "name": "class",
+                                          "value": {
+                                            "op": "literal",
+                                            "value": "comment"
+                                          }
+                                        }
+                                      ],
+                                      "events": [],
+                                      "children": [
+                                        {
+                                          "kind": "element",
+                                          "tag": "span",
+                                          "attrs": [
+                                            {
+                                              "name": "class",
+                                              "value": {
+                                                "op": "literal",
+                                                "value": "author"
+                                              }
+                                            }
+                                          ],
+                                          "events": [],
+                                          "children": [
+                                            {
+                                              "kind": "text",
+                                              "value": {
+                                                "op": "get",
+                                                "object": {
+                                                  "op": "local",
+                                                  "name": "c"
+                                                },
+                                                "key": "author"
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "kind": "element",
+                                          "tag": "span",
+                                          "events": [],
+                                          "children": [
+                                            {
+                                              "kind": "text",
+                                              "value": {
+                                                "op": "get",
+                                                "object": {
+                                                  "op": "local",
+                                                  "name": "c"
+                                                },
+                                                "key": "body"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "composer"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "element",
+                                  "tag": "input",
+                                  "attrs": [
+                                    {
+                                      "name": "id",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "comment"
+                                      }
+                                    },
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "field"
+                                      }
+                                    },
+                                    {
+                                      "name": "value",
+                                      "value": {
+                                        "op": "read",
+                                        "source": "draft"
+                                      }
+                                    },
+                                    {
+                                      "name": "placeholder",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "Leave a comment"
+                                      }
+                                    },
+                                    {
+                                      "name": "onInput",
+                                      "param": "e",
+                                      "steps": [
+                                        {
+                                          "op": "write",
+                                          "source": "draft",
+                                          "value": {
+                                            "op": "get",
+                                            "object": {
+                                              "op": "get",
+                                              "object": {
+                                                "op": "local",
+                                                "name": "e"
+                                              },
+                                              "key": "target"
+                                            },
+                                            "key": "value"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "name": "onChange",
+                                      "steps": [
+                                        {
+                                          "op": "call",
+                                          "action": "comment",
+                                          "args": []
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": []
+                                },
+                                {
+                                  "kind": "element",
+                                  "tag": "button",
+                                  "attrs": [
+                                    {
+                                      "name": "id",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "post"
+                                      }
+                                    },
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "primary"
+                                      }
+                                    },
+                                    {
+                                      "name": "disabled",
+                                      "value": {
+                                        "op": "eq",
+                                        "left": {
+                                          "op": "read",
+                                          "source": "draft"
+                                        },
+                                        "right": {
+                                          "op": "literal",
+                                          "value": ""
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "name": "onClick",
+                                      "steps": [
+                                        {
+                                          "op": "call",
+                                          "action": "comment",
+                                          "args": []
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "pending",
+                                          "value": {
+                                            "op": "read",
+                                            "source": "issue"
+                                          }
+                                        },
+                                        "then": {
+                                          "op": "literal",
+                                          "value": "Posting…"
+                                        },
+                                        "else": {
+                                          "op": "literal",
+                                          "value": "Comment"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "fallback": [
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "detail"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "element",
+                      "tag": "p",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "muted"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "literal",
+                            "value": "Pick an issue on the left."
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

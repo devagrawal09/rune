@@ -1,0 +1,3 @@
+export pure fn loadMessages(): { id: number, author: string, text: string, mine: boolean }[]
+export fn sendMessage(text: string): number
+export fn awaitReply(after: number): boolean

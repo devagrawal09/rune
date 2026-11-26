@@ -1,0 +1,4 @@
+export pure fn searchIssues(query: string, state: string): { id: number, title: string, label: string, open: boolean, comments: number }[]
+export pure fn loadIssue(id: number): { id: number, title: string, body: string, open: boolean, author: string, comments: { id: number, author: string, body: string }[] }
+export fn setOpen(id: number, open: boolean): boolean
+export fn postComment(id: number, body: string): number

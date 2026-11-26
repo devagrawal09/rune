@@ -1,0 +1,1 @@
+export pure fn loadForecast(city: string): { city: string, now: number, nowF: number, summary: string, updated: string, days: { name: string, sky: string, low: number, lowF: number, high: number, highF: number }[] }

@@ -1,0 +1,12 @@
+[
+  {"t": 2.0, "type": "tap", "key": "id:unit-f"},
+  {"t": 3.2, "type": "tap", "key": "id:city-Oslo"},
+  {"t": 5.0, "type": "tap", "key": "id:city-Tokyo"},
+  {"t": 5.4, "type": "tap", "key": "id:city-Austin"},
+  {"t": 7.6, "type": "tap", "key": "id:unit-c"},
+  {"t": 8.8, "type": "tap", "key": "id:city-Reykjavik"},
+  {"t": 11.0, "type": "tap", "key": "id:retry"},
+  {"t": 13.2, "type": "tap", "key": "id:refresh"},
+  {"t": 15.4, "type": "tap", "key": "id:city-Lisbon"},
+  {"t": 17.5, "type": "mark", "name": "end"}
+]

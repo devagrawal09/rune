@@ -1,0 +1,15 @@
+[
+  {"t": 1.0, "type": "tap", "key": "id:message"},
+  {"t": 1.2, "type": "type", "text": "Just tried it, works great", "every": 0.06},
+  {"t": 3.0, "type": "key", "name": "Enter"},
+  {"t": 6.2, "type": "tap", "key": "id:message"},
+  {"t": 6.4, "type": "type", "text": "One more to be sure", "every": 0.06},
+  {"t": 7.8, "type": "tap", "key": "id:send"},
+  {"t": 10.8, "type": "tap", "key": "id:message"},
+  {"t": 11.0, "type": "type", "text": "And this one in a tunnel", "every": 0.06},
+  {"t": 12.8, "type": "key", "name": "Enter"},
+  {"t": 15.0, "type": "tap", "key": "id:retry"},
+  {"t": 15.8, "type": "tap", "key": "id:message"},
+  {"t": 16.2, "type": "key", "name": "Enter"},
+  {"t": 20.5, "type": "mark", "name": "end"}
+]

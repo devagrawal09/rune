@@ -1,0 +1,12 @@
+[
+  {"t": 1.0, "type": "tap", "key": "id:new"},
+  {"t": 1.3, "type": "type", "text": "Buy oat milk"},
+  {"t": 2.4, "type": "key", "name": "Enter"},
+  {"t": 3.8, "type": "tap", "key": "id:check-2"},
+  {"t": 5.0, "type": "tap", "key": "id:remove-3"},
+  {"t": 6.2, "type": "tap", "key": "id:tab-active"},
+  {"t": 7.2, "type": "tap", "key": "id:tab-all"},
+  {"t": 8.0, "type": "tap", "key": "id:check-1"},
+  {"t": 9.2, "type": "tap", "key": "id:check-4"},
+  {"t": 11.5, "type": "mark", "name": "end"}
+]

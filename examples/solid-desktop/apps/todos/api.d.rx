@@ -1,0 +1,4 @@
+export pure fn loadTodos(): { id: number, title: string, done: boolean }[]
+export fn addTodo(title: string): number
+export fn setDone(id: number, done: boolean): boolean
+export fn removeTodo(id: number): boolean

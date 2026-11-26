@@ -1,0 +1,1266 @@
+{
+  "version": 2.3,
+  "component": "Todos",
+  "hosts": [
+    {
+      "name": "addTodo",
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    {
+      "name": "loadTodos",
+      "params": [],
+      "returns": "{ id: number, title: string, done: boolean }[]",
+      "pure": true
+    },
+    {
+      "name": "removeTodo",
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    {
+      "name": "setDone",
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "boolean"
+    }
+  ],
+  "sources": [
+    {
+      "name": "shown",
+      "kind": "optimistic",
+      "seed": {
+        "op": "read",
+        "source": "todos"
+      }
+    },
+    {
+      "name": "draft",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "view",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": "all"
+      }
+    },
+    {
+      "name": "status",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    }
+  ],
+  "memos": [
+    {
+      "name": "todos",
+      "await": {
+        "host": "loadTodos",
+        "args": []
+      }
+    },
+    {
+      "name": "visible",
+      "value": {
+        "op": "filter",
+        "array": {
+          "op": "read",
+          "source": "shown"
+        },
+        "param": "t",
+        "body": {
+          "op": "or",
+          "left": {
+            "op": "eq",
+            "left": {
+              "op": "read",
+              "source": "view"
+            },
+            "right": {
+              "op": "literal",
+              "value": "all"
+            }
+          },
+          "right": {
+            "op": "cond",
+            "test": {
+              "op": "eq",
+              "left": {
+                "op": "read",
+                "source": "view"
+              },
+              "right": {
+                "op": "literal",
+                "value": "done"
+              }
+            },
+            "then": {
+              "op": "get",
+              "object": {
+                "op": "local",
+                "name": "t"
+              },
+              "key": "done"
+            },
+            "else": {
+              "op": "not",
+              "value": {
+                "op": "get",
+                "object": {
+                  "op": "local",
+                  "name": "t"
+                },
+                "key": "done"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "left",
+      "value": {
+        "op": "length",
+        "array": {
+          "op": "filter",
+          "array": {
+            "op": "read",
+            "source": "shown"
+          },
+          "param": "t",
+          "body": {
+            "op": "not",
+            "value": {
+              "op": "get",
+              "object": {
+                "op": "local",
+                "name": "t"
+              },
+              "key": "done"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "add",
+      "params": [],
+      "steps": [
+        {
+          "op": "affects",
+          "source": "todos"
+        },
+        {
+          "op": "try",
+          "body": [
+            {
+              "op": "await",
+              "host": "addTodo",
+              "args": [
+                {
+                  "op": "read",
+                  "source": "draft"
+                }
+              ],
+              "bind": "$await0"
+            },
+            {
+              "op": "write",
+              "source": "draft",
+              "value": {
+                "op": "literal",
+                "value": ""
+              }
+            },
+            {
+              "op": "refresh",
+              "source": "todos"
+            },
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "add",
+                "left": {
+                  "op": "literal",
+                  "value": "Added #"
+                },
+                "right": {
+                  "op": "local",
+                  "name": "$await0"
+                }
+              }
+            }
+          ],
+          "catch": [
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "literal",
+                "value": "Could not add that"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "toggle",
+      "params": [
+        "id",
+        "done"
+      ],
+      "steps": [
+        {
+          "op": "optimistic",
+          "source": "shown",
+          "updater": {
+            "param": "list",
+            "body": {
+              "op": "map",
+              "array": {
+                "op": "local",
+                "name": "list"
+              },
+              "param": "t",
+              "body": {
+                "op": "cond",
+                "test": {
+                  "op": "eq",
+                  "left": {
+                    "op": "get",
+                    "object": {
+                      "op": "local",
+                      "name": "t"
+                    },
+                    "key": "id"
+                  },
+                  "right": {
+                    "op": "local",
+                    "name": "id"
+                  }
+                },
+                "then": {
+                  "op": "object",
+                  "fields": [
+                    {
+                      "key": "id",
+                      "value": {
+                        "op": "get",
+                        "object": {
+                          "op": "local",
+                          "name": "t"
+                        },
+                        "key": "id"
+                      }
+                    },
+                    {
+                      "key": "title",
+                      "value": {
+                        "op": "get",
+                        "object": {
+                          "op": "local",
+                          "name": "t"
+                        },
+                        "key": "title"
+                      }
+                    },
+                    {
+                      "key": "done",
+                      "value": {
+                        "op": "local",
+                        "name": "done"
+                      }
+                    }
+                  ]
+                },
+                "else": {
+                  "op": "local",
+                  "name": "t"
+                }
+              }
+            }
+          }
+        },
+        {
+          "op": "try",
+          "body": [
+            {
+              "op": "await",
+              "host": "setDone",
+              "args": [
+                {
+                  "op": "local",
+                  "name": "id"
+                },
+                {
+                  "op": "local",
+                  "name": "done"
+                }
+              ],
+              "bind": "$await1"
+            },
+            {
+              "op": "refresh",
+              "source": "todos"
+            }
+          ],
+          "catch": [
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "add",
+                "left": {
+                  "op": "literal",
+                  "value": "Could not save #"
+                },
+                "right": {
+                  "op": "local",
+                  "name": "id"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "remove",
+      "params": [
+        "id"
+      ],
+      "steps": [
+        {
+          "op": "optimistic",
+          "source": "shown",
+          "updater": {
+            "param": "list",
+            "body": {
+              "op": "filter",
+              "array": {
+                "op": "local",
+                "name": "list"
+              },
+              "param": "t",
+              "body": {
+                "op": "ne",
+                "left": {
+                  "op": "get",
+                  "object": {
+                    "op": "local",
+                    "name": "t"
+                  },
+                  "key": "id"
+                },
+                "right": {
+                  "op": "local",
+                  "name": "id"
+                }
+              }
+            }
+          }
+        },
+        {
+          "op": "try",
+          "body": [
+            {
+              "op": "await",
+              "host": "removeTodo",
+              "args": [
+                {
+                  "op": "local",
+                  "name": "id"
+                }
+              ],
+              "bind": "$await2"
+            },
+            {
+              "op": "refresh",
+              "source": "todos"
+            }
+          ],
+          "catch": [
+            {
+              "op": "write",
+              "source": "status",
+              "value": {
+                "op": "add",
+                "left": {
+                  "op": "literal",
+                  "value": "Could not remove #"
+                },
+                "right": {
+                  "op": "local",
+                  "name": "id"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "markup": [
+    {
+      "kind": "element",
+      "tag": "main",
+      "attrs": [
+        {
+          "name": "class",
+          "value": {
+            "op": "literal",
+            "value": "app"
+          }
+        }
+      ],
+      "events": [],
+      "children": [
+        {
+          "kind": "element",
+          "tag": "h1",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "title"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "text",
+              "value": {
+                "op": "literal",
+                "value": "Todos"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "composer"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "input",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "new"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "field"
+                  }
+                },
+                {
+                  "name": "value",
+                  "value": {
+                    "op": "read",
+                    "source": "draft"
+                  }
+                },
+                {
+                  "name": "placeholder",
+                  "value": {
+                    "op": "literal",
+                    "value": "What needs doing?"
+                  }
+                },
+                {
+                  "name": "onInput",
+                  "param": "e",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "draft",
+                      "value": {
+                        "op": "get",
+                        "object": {
+                          "op": "get",
+                          "object": {
+                            "op": "local",
+                            "name": "e"
+                          },
+                          "key": "target"
+                        },
+                        "key": "value"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "onChange",
+                  "steps": [
+                    {
+                      "op": "call",
+                      "action": "add",
+                      "args": []
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": []
+            },
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "add"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "primary"
+                  }
+                },
+                {
+                  "name": "disabled",
+                  "value": {
+                    "op": "eq",
+                    "left": {
+                      "op": "read",
+                      "source": "draft"
+                    },
+                    "right": {
+                      "op": "literal",
+                      "value": ""
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "call",
+                      "action": "add",
+                      "args": []
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "pending",
+                      "value": {
+                        "op": "read",
+                        "source": "todos"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "Saving…"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "Add"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "errored",
+          "fallback": [
+            {
+              "kind": "element",
+              "tag": "p",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "error"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Could not load your list "
+                  }
+                },
+                {
+                  "kind": "element",
+                  "tag": "button",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "ghost"
+                      }
+                    },
+                    {
+                      "name": "onClick",
+                      "steps": [
+                        {
+                          "op": "refresh",
+                          "source": "todos"
+                        }
+                      ]
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "Retry"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "children": [
+            {
+              "kind": "loading",
+              "fallback": [
+                {
+                  "kind": "element",
+                  "tag": "p",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "muted"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "Loading your list…"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "tabs"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "element",
+                      "tag": "button",
+                      "attrs": [
+                        {
+                          "name": "id",
+                          "value": {
+                            "op": "literal",
+                            "value": "tab-all"
+                          }
+                        },
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "cond",
+                            "test": {
+                              "op": "eq",
+                              "left": {
+                                "op": "read",
+                                "source": "view"
+                              },
+                              "right": {
+                                "op": "literal",
+                                "value": "all"
+                              }
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": "tab on"
+                            },
+                            "else": {
+                              "op": "literal",
+                              "value": "tab"
+                            }
+                          }
+                        },
+                        {
+                          "name": "onClick",
+                          "steps": [
+                            {
+                              "op": "write",
+                              "source": "view",
+                              "value": {
+                                "op": "literal",
+                                "value": "all"
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "literal",
+                            "value": "All"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "element",
+                      "tag": "button",
+                      "attrs": [
+                        {
+                          "name": "id",
+                          "value": {
+                            "op": "literal",
+                            "value": "tab-active"
+                          }
+                        },
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "cond",
+                            "test": {
+                              "op": "eq",
+                              "left": {
+                                "op": "read",
+                                "source": "view"
+                              },
+                              "right": {
+                                "op": "literal",
+                                "value": "active"
+                              }
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": "tab on"
+                            },
+                            "else": {
+                              "op": "literal",
+                              "value": "tab"
+                            }
+                          }
+                        },
+                        {
+                          "name": "onClick",
+                          "steps": [
+                            {
+                              "op": "write",
+                              "source": "view",
+                              "value": {
+                                "op": "literal",
+                                "value": "active"
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "literal",
+                            "value": "Active"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "element",
+                      "tag": "button",
+                      "attrs": [
+                        {
+                          "name": "id",
+                          "value": {
+                            "op": "literal",
+                            "value": "tab-done"
+                          }
+                        },
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "cond",
+                            "test": {
+                              "op": "eq",
+                              "left": {
+                                "op": "read",
+                                "source": "view"
+                              },
+                              "right": {
+                                "op": "literal",
+                                "value": "done"
+                              }
+                            },
+                            "then": {
+                              "op": "literal",
+                              "value": "tab on"
+                            },
+                            "else": {
+                              "op": "literal",
+                              "value": "tab"
+                            }
+                          }
+                        },
+                        {
+                          "name": "onClick",
+                          "steps": [
+                            {
+                              "op": "write",
+                              "source": "view",
+                              "value": {
+                                "op": "literal",
+                                "value": "done"
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "literal",
+                            "value": "Done"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "show",
+                  "when": {
+                    "op": "gt",
+                    "left": {
+                      "op": "length",
+                      "array": {
+                        "op": "read",
+                        "source": "visible"
+                      }
+                    },
+                    "right": {
+                      "op": "literal",
+                      "value": 0
+                    }
+                  },
+                  "children": [
+                    {
+                      "kind": "element",
+                      "tag": "ul",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "list"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "for",
+                          "each": {
+                            "op": "read",
+                            "source": "visible"
+                          },
+                          "item": "t",
+                          "key": "identity",
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "li",
+                              "attrs": [
+                                {
+                                  "name": "id",
+                                  "value": {
+                                    "op": "add",
+                                    "left": {
+                                      "op": "literal",
+                                      "value": "todo-"
+                                    },
+                                    "right": {
+                                      "op": "get",
+                                      "object": {
+                                        "op": "local",
+                                        "name": "t"
+                                      },
+                                      "key": "id"
+                                    }
+                                  }
+                                },
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "cond",
+                                    "test": {
+                                      "op": "get",
+                                      "object": {
+                                        "op": "local",
+                                        "name": "t"
+                                      },
+                                      "key": "done"
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "row done"
+                                    },
+                                    "else": {
+                                      "op": "literal",
+                                      "value": "row"
+                                    }
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "element",
+                                  "tag": "button",
+                                  "attrs": [
+                                    {
+                                      "name": "id",
+                                      "value": {
+                                        "op": "add",
+                                        "left": {
+                                          "op": "literal",
+                                          "value": "check-"
+                                        },
+                                        "right": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "t"
+                                          },
+                                          "key": "id"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "t"
+                                          },
+                                          "key": "done"
+                                        },
+                                        "then": {
+                                          "op": "literal",
+                                          "value": "check checked"
+                                        },
+                                        "else": {
+                                          "op": "literal",
+                                          "value": "check"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "name": "onClick",
+                                      "steps": [
+                                        {
+                                          "op": "call",
+                                          "action": "toggle",
+                                          "args": [
+                                            {
+                                              "op": "get",
+                                              "object": {
+                                                "op": "local",
+                                                "name": "t"
+                                              },
+                                              "key": "id"
+                                            },
+                                            {
+                                              "op": "not",
+                                              "value": {
+                                                "op": "get",
+                                                "object": {
+                                                  "op": "local",
+                                                  "name": "t"
+                                                },
+                                                "key": "done"
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "t"
+                                          },
+                                          "key": "done"
+                                        },
+                                        "then": {
+                                          "op": "literal",
+                                          "value": "✓"
+                                        },
+                                        "else": {
+                                          "op": "literal",
+                                          "value": ""
+                                        }
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "element",
+                                  "tag": "span",
+                                  "attrs": [
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "label"
+                                      }
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "get",
+                                        "object": {
+                                          "op": "local",
+                                          "name": "t"
+                                        },
+                                        "key": "title"
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "element",
+                                  "tag": "button",
+                                  "attrs": [
+                                    {
+                                      "name": "id",
+                                      "value": {
+                                        "op": "add",
+                                        "left": {
+                                          "op": "literal",
+                                          "value": "remove-"
+                                        },
+                                        "right": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "t"
+                                          },
+                                          "key": "id"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "ghost"
+                                      }
+                                    },
+                                    {
+                                      "name": "onClick",
+                                      "steps": [
+                                        {
+                                          "op": "call",
+                                          "action": "remove",
+                                          "args": [
+                                            {
+                                              "op": "get",
+                                              "object": {
+                                                "op": "local",
+                                                "name": "t"
+                                              },
+                                              "key": "id"
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "Remove"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "fallback": [
+                    {
+                      "kind": "element",
+                      "tag": "p",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "muted"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "literal",
+                            "value": "Nothing here"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "element",
+                  "tag": "p",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "footer"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "read",
+                        "source": "left"
+                      }
+                    },
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": " left"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "element",
+          "tag": "p",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "status"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "text",
+              "value": {
+                "op": "read",
+                "source": "status"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,922 @@
+{
+  "version": 2.3,
+  "component": "Chat",
+  "hosts": [
+    {
+      "name": "awaitReply",
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    {
+      "name": "loadMessages",
+      "params": [],
+      "returns": "{ id: number, author: string, text: string, mine: boolean }[]",
+      "pure": true
+    },
+    {
+      "name": "sendMessage",
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    }
+  ],
+  "sources": [
+    {
+      "name": "draft",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "sending",
+      "kind": "optimistic",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    },
+    {
+      "name": "typing",
+      "kind": "optimistic",
+      "seed": {
+        "op": "literal",
+        "value": false
+      }
+    },
+    {
+      "name": "failed",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": ""
+      }
+    }
+  ],
+  "memos": [
+    {
+      "name": "messages",
+      "await": {
+        "host": "loadMessages",
+        "args": []
+      }
+    }
+  ],
+  "actions": [
+    {
+      "name": "send",
+      "params": [
+        "text"
+      ],
+      "steps": [
+        {
+          "op": "optimistic",
+          "source": "sending",
+          "value": {
+            "op": "local",
+            "name": "text"
+          }
+        },
+        {
+          "op": "write",
+          "source": "failed",
+          "value": {
+            "op": "literal",
+            "value": ""
+          }
+        },
+        {
+          "op": "try",
+          "body": [
+            {
+              "op": "await",
+              "host": "sendMessage",
+              "args": [
+                {
+                  "op": "local",
+                  "name": "text"
+                }
+              ],
+              "bind": "$await0"
+            },
+            {
+              "op": "refresh",
+              "source": "messages"
+            },
+            {
+              "op": "optimistic",
+              "source": "typing",
+              "value": {
+                "op": "literal",
+                "value": true
+              }
+            },
+            {
+              "op": "await",
+              "host": "awaitReply",
+              "args": [
+                {
+                  "op": "local",
+                  "name": "$await0"
+                }
+              ],
+              "bind": "$await1"
+            },
+            {
+              "op": "refresh",
+              "source": "messages"
+            }
+          ],
+          "catch": [
+            {
+              "op": "write",
+              "source": "failed",
+              "value": {
+                "op": "local",
+                "name": "text"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "markup": [
+    {
+      "kind": "element",
+      "tag": "main",
+      "attrs": [
+        {
+          "name": "class",
+          "value": {
+            "op": "literal",
+            "value": "app"
+          }
+        }
+      ],
+      "events": [],
+      "children": [
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "bar"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "h1",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "title"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Ada"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "span",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "spacer"
+                  }
+                }
+              ],
+              "events": [],
+              "children": []
+            },
+            {
+              "kind": "element",
+              "tag": "small",
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "read",
+                      "source": "typing"
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "typing…"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "online"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "errored",
+          "fallback": [
+            {
+              "kind": "element",
+              "tag": "p",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "error"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Could not load the conversation "
+                  }
+                },
+                {
+                  "kind": "element",
+                  "tag": "button",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "ghost"
+                      }
+                    },
+                    {
+                      "name": "onClick",
+                      "steps": [
+                        {
+                          "op": "refresh",
+                          "source": "messages"
+                        }
+                      ]
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "Retry"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "children": [
+            {
+              "kind": "loading",
+              "fallback": [
+                {
+                  "kind": "element",
+                  "tag": "p",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "muted"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "Loading the conversation…"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "thread"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "for",
+                      "each": {
+                        "op": "read",
+                        "source": "messages"
+                      },
+                      "item": "m",
+                      "key": "identity",
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "add",
+                                "left": {
+                                  "op": "literal",
+                                  "value": "line-"
+                                },
+                                "right": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "local",
+                                    "name": "m"
+                                  },
+                                  "key": "id"
+                                }
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "cond",
+                                "test": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "local",
+                                    "name": "m"
+                                  },
+                                  "key": "mine"
+                                },
+                                "then": {
+                                  "op": "literal",
+                                  "value": "mine"
+                                },
+                                "else": {
+                                  "op": "literal",
+                                  "value": "line"
+                                }
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "cond",
+                                    "test": {
+                                      "op": "get",
+                                      "object": {
+                                        "op": "local",
+                                        "name": "m"
+                                      },
+                                      "key": "mine"
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "bubble me"
+                                    },
+                                    "else": {
+                                      "op": "literal",
+                                      "value": "bubble them"
+                                    }
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "element",
+                                  "tag": "span",
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "get",
+                                        "object": {
+                                          "op": "local",
+                                          "name": "m"
+                                        },
+                                        "key": "text"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "show",
+                      "when": {
+                        "op": "ne",
+                        "left": {
+                          "op": "read",
+                          "source": "sending"
+                        },
+                        "right": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "literal",
+                                "value": "sending"
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "mine"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "cond",
+                                    "test": {
+                                      "op": "read",
+                                      "source": "typing"
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "bubble me"
+                                    },
+                                    "else": {
+                                      "op": "literal",
+                                      "value": "bubble me pending"
+                                    }
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "element",
+                                  "tag": "span",
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "read",
+                                        "source": "sending"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "fallback": []
+                    },
+                    {
+                      "kind": "show",
+                      "when": {
+                        "op": "read",
+                        "source": "typing"
+                      },
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "literal",
+                                "value": "typing"
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "line"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "div",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "bubble them typing"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "element",
+                                  "tag": "span",
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "Ada is typing…"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "fallback": []
+                    },
+                    {
+                      "kind": "show",
+                      "when": {
+                        "op": "ne",
+                        "left": {
+                          "op": "read",
+                          "source": "failed"
+                        },
+                        "right": {
+                          "op": "literal",
+                          "value": ""
+                        }
+                      },
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "literal",
+                                "value": "failed"
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "mine"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "p",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "error"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "add",
+                                    "left": {
+                                      "op": "literal",
+                                      "value": "Not sent: "
+                                    },
+                                    "right": {
+                                      "op": "read",
+                                      "source": "failed"
+                                    }
+                                  }
+                                },
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": " "
+                                  }
+                                },
+                                {
+                                  "kind": "element",
+                                  "tag": "button",
+                                  "attrs": [
+                                    {
+                                      "name": "id",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "retry"
+                                      }
+                                    },
+                                    {
+                                      "name": "class",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "ghost"
+                                      }
+                                    },
+                                    {
+                                      "name": "onClick",
+                                      "steps": [
+                                        {
+                                          "op": "write",
+                                          "source": "draft",
+                                          "value": {
+                                            "op": "read",
+                                            "source": "failed"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ],
+                                  "events": [],
+                                  "children": [
+                                    {
+                                      "kind": "text",
+                                      "value": {
+                                        "op": "literal",
+                                        "value": "Edit"
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ],
+                      "fallback": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "composer"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "input",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "message"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "field"
+                  }
+                },
+                {
+                  "name": "value",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "ne",
+                      "left": {
+                        "op": "read",
+                        "source": "sending"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": ""
+                    },
+                    "else": {
+                      "op": "read",
+                      "source": "draft"
+                    }
+                  }
+                },
+                {
+                  "name": "placeholder",
+                  "value": {
+                    "op": "literal",
+                    "value": "Message Ada"
+                  }
+                },
+                {
+                  "name": "onInput",
+                  "param": "e",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "draft",
+                      "value": {
+                        "op": "get",
+                        "object": {
+                          "op": "get",
+                          "object": {
+                            "op": "local",
+                            "name": "e"
+                          },
+                          "key": "target"
+                        },
+                        "key": "value"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "onChange",
+                  "steps": [
+                    {
+                      "op": "call",
+                      "action": "send",
+                      "args": [
+                        {
+                          "op": "read",
+                          "source": "draft"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "write",
+                      "source": "draft",
+                      "value": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": []
+            },
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "send"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "primary"
+                  }
+                },
+                {
+                  "name": "disabled",
+                  "value": {
+                    "op": "or",
+                    "left": {
+                      "op": "eq",
+                      "left": {
+                        "op": "read",
+                        "source": "draft"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    },
+                    "right": {
+                      "op": "ne",
+                      "left": {
+                        "op": "read",
+                        "source": "sending"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "call",
+                      "action": "send",
+                      "args": [
+                        {
+                          "op": "read",
+                          "source": "draft"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "write",
+                      "source": "draft",
+                      "value": {
+                        "op": "literal",
+                        "value": ""
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Send"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

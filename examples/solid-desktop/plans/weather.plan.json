@@ -1,0 +1,1177 @@
+{
+  "version": 2.3,
+  "component": "Weather",
+  "hosts": [
+    {
+      "name": "loadForecast",
+      "params": [
+        "string"
+      ],
+      "returns": "{ city: string, now: number, nowF: number, summary: string, updated: string, days: { name: string, sky: string, low: number, lowF: number, high: number, highF: number }[] }",
+      "pure": true
+    }
+  ],
+  "sources": [
+    {
+      "name": "city",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": "Lisbon"
+      }
+    },
+    {
+      "name": "unit",
+      "kind": "signal",
+      "seed": {
+        "op": "literal",
+        "value": "C"
+      }
+    }
+  ],
+  "memos": [
+    {
+      "name": "forecast",
+      "await": {
+        "host": "loadForecast",
+        "args": [
+          {
+            "op": "read",
+            "source": "city"
+          }
+        ]
+      }
+    }
+  ],
+  "actions": [],
+  "markup": [
+    {
+      "kind": "element",
+      "tag": "main",
+      "attrs": [
+        {
+          "name": "class",
+          "value": {
+            "op": "literal",
+            "value": "app"
+          }
+        }
+      ],
+      "events": [],
+      "children": [
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "bar"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "h1",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "title"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Weather"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "span",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "spacer"
+                  }
+                }
+              ],
+              "events": [],
+              "children": []
+            },
+            {
+              "kind": "element",
+              "tag": "div",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "tabs"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "element",
+                  "tag": "button",
+                  "attrs": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "op": "literal",
+                        "value": "unit-c"
+                      }
+                    },
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "cond",
+                        "test": {
+                          "op": "eq",
+                          "left": {
+                            "op": "read",
+                            "source": "unit"
+                          },
+                          "right": {
+                            "op": "literal",
+                            "value": "C"
+                          }
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": "tab on"
+                        },
+                        "else": {
+                          "op": "literal",
+                          "value": "tab"
+                        }
+                      }
+                    },
+                    {
+                      "name": "onClick",
+                      "steps": [
+                        {
+                          "op": "write",
+                          "source": "unit",
+                          "value": {
+                            "op": "literal",
+                            "value": "C"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "°C"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "kind": "element",
+                  "tag": "button",
+                  "attrs": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "op": "literal",
+                        "value": "unit-f"
+                      }
+                    },
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "cond",
+                        "test": {
+                          "op": "eq",
+                          "left": {
+                            "op": "read",
+                            "source": "unit"
+                          },
+                          "right": {
+                            "op": "literal",
+                            "value": "F"
+                          }
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": "tab on"
+                        },
+                        "else": {
+                          "op": "literal",
+                          "value": "tab"
+                        }
+                      }
+                    },
+                    {
+                      "name": "onClick",
+                      "steps": [
+                        {
+                          "op": "write",
+                          "source": "unit",
+                          "value": {
+                            "op": "literal",
+                            "value": "F"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "°F"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "element",
+          "tag": "div",
+          "attrs": [
+            {
+              "name": "class",
+              "value": {
+                "op": "literal",
+                "value": "cities"
+              }
+            }
+          ],
+          "events": [],
+          "children": [
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "city-Lisbon"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "eq",
+                      "left": {
+                        "op": "read",
+                        "source": "city"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": "Lisbon"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "tab on"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "tab"
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "city",
+                      "value": {
+                        "op": "literal",
+                        "value": "Lisbon"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Lisbon"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "city-Oslo"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "eq",
+                      "left": {
+                        "op": "read",
+                        "source": "city"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": "Oslo"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "tab on"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "tab"
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "city",
+                      "value": {
+                        "op": "literal",
+                        "value": "Oslo"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Oslo"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "city-Tokyo"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "eq",
+                      "left": {
+                        "op": "read",
+                        "source": "city"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": "Tokyo"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "tab on"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "tab"
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "city",
+                      "value": {
+                        "op": "literal",
+                        "value": "Tokyo"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Tokyo"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "city-Reykjavik"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "eq",
+                      "left": {
+                        "op": "read",
+                        "source": "city"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": "Reykjavik"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "tab on"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "tab"
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "city",
+                      "value": {
+                        "op": "literal",
+                        "value": "Reykjavik"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Reykjavik"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "element",
+              "tag": "button",
+              "attrs": [
+                {
+                  "name": "id",
+                  "value": {
+                    "op": "literal",
+                    "value": "city-Austin"
+                  }
+                },
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "cond",
+                    "test": {
+                      "op": "eq",
+                      "left": {
+                        "op": "read",
+                        "source": "city"
+                      },
+                      "right": {
+                        "op": "literal",
+                        "value": "Austin"
+                      }
+                    },
+                    "then": {
+                      "op": "literal",
+                      "value": "tab on"
+                    },
+                    "else": {
+                      "op": "literal",
+                      "value": "tab"
+                    }
+                  }
+                },
+                {
+                  "name": "onClick",
+                  "steps": [
+                    {
+                      "op": "write",
+                      "source": "city",
+                      "value": {
+                        "op": "literal",
+                        "value": "Austin"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "Austin"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "errored",
+          "fallback": [
+            {
+              "kind": "element",
+              "tag": "p",
+              "attrs": [
+                {
+                  "name": "class",
+                  "value": {
+                    "op": "literal",
+                    "value": "error"
+                  }
+                }
+              ],
+              "events": [],
+              "children": [
+                {
+                  "kind": "text",
+                  "value": {
+                    "op": "literal",
+                    "value": "The forecast service did not answer "
+                  }
+                },
+                {
+                  "kind": "element",
+                  "tag": "button",
+                  "attrs": [
+                    {
+                      "name": "id",
+                      "value": {
+                        "op": "literal",
+                        "value": "retry"
+                      }
+                    },
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "ghost"
+                      }
+                    },
+                    {
+                      "name": "onClick",
+                      "steps": [
+                        {
+                          "op": "refresh",
+                          "source": "forecast"
+                        }
+                      ]
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "Retry"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "children": [
+            {
+              "kind": "loading",
+              "fallback": [
+                {
+                  "kind": "element",
+                  "tag": "p",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "muted"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "text",
+                      "value": {
+                        "op": "literal",
+                        "value": "Loading the forecast…"
+                      }
+                    }
+                  ]
+                }
+              ],
+              "children": [
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "cond",
+                        "test": {
+                          "op": "pending",
+                          "value": {
+                            "op": "read",
+                            "source": "forecast"
+                          }
+                        },
+                        "then": {
+                          "op": "literal",
+                          "value": "hero stale"
+                        },
+                        "else": {
+                          "op": "literal",
+                          "value": "hero"
+                        }
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "element",
+                      "tag": "div",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "bar"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "h2",
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "get",
+                                "object": {
+                                  "op": "read",
+                                  "source": "forecast"
+                                },
+                                "key": "city"
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "element",
+                          "tag": "span",
+                          "attrs": [
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "spacer"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": []
+                        },
+                        {
+                          "kind": "element",
+                          "tag": "small",
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "add",
+                                "left": {
+                                  "op": "literal",
+                                  "value": "Updated "
+                                },
+                                "right": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "read",
+                                    "source": "forecast"
+                                  },
+                                  "key": "updated"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "element",
+                          "tag": "button",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "literal",
+                                "value": "refresh"
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "ghost"
+                              }
+                            },
+                            {
+                              "name": "onClick",
+                              "steps": [
+                                {
+                                  "op": "refresh",
+                                  "source": "forecast"
+                                }
+                              ]
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "text",
+                              "value": {
+                                "op": "literal",
+                                "value": "Refresh"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "element",
+                      "tag": "p",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "big"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "add",
+                            "left": {
+                              "op": "add",
+                              "left": {
+                                "op": "literal",
+                                "value": ""
+                              },
+                              "right": {
+                                "op": "cond",
+                                "test": {
+                                  "op": "eq",
+                                  "left": {
+                                    "op": "read",
+                                    "source": "unit"
+                                  },
+                                  "right": {
+                                    "op": "literal",
+                                    "value": "C"
+                                  }
+                                },
+                                "then": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "read",
+                                    "source": "forecast"
+                                  },
+                                  "key": "now"
+                                },
+                                "else": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "read",
+                                    "source": "forecast"
+                                  },
+                                  "key": "nowF"
+                                }
+                              }
+                            },
+                            "right": {
+                              "op": "literal",
+                              "value": "°"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "element",
+                      "tag": "p",
+                      "attrs": [
+                        {
+                          "name": "class",
+                          "value": {
+                            "op": "literal",
+                            "value": "muted"
+                          }
+                        }
+                      ],
+                      "events": [],
+                      "children": [
+                        {
+                          "kind": "text",
+                          "value": {
+                            "op": "get",
+                            "object": {
+                              "op": "read",
+                              "source": "forecast"
+                            },
+                            "key": "summary"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "element",
+                  "tag": "div",
+                  "attrs": [
+                    {
+                      "name": "class",
+                      "value": {
+                        "op": "literal",
+                        "value": "days"
+                      }
+                    }
+                  ],
+                  "events": [],
+                  "children": [
+                    {
+                      "kind": "for",
+                      "each": {
+                        "op": "get",
+                        "object": {
+                          "op": "read",
+                          "source": "forecast"
+                        },
+                        "key": "days"
+                      },
+                      "item": "d",
+                      "key": "identity",
+                      "children": [
+                        {
+                          "kind": "element",
+                          "tag": "div",
+                          "attrs": [
+                            {
+                              "name": "id",
+                              "value": {
+                                "op": "add",
+                                "left": {
+                                  "op": "literal",
+                                  "value": "day-"
+                                },
+                                "right": {
+                                  "op": "get",
+                                  "object": {
+                                    "op": "local",
+                                    "name": "d"
+                                  },
+                                  "key": "name"
+                                }
+                              }
+                            },
+                            {
+                              "name": "class",
+                              "value": {
+                                "op": "literal",
+                                "value": "day"
+                              }
+                            }
+                          ],
+                          "events": [],
+                          "children": [
+                            {
+                              "kind": "element",
+                              "tag": "span",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "name"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "get",
+                                    "object": {
+                                      "op": "local",
+                                      "name": "d"
+                                    },
+                                    "key": "name"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "span",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "label"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "get",
+                                    "object": {
+                                      "op": "local",
+                                      "name": "d"
+                                    },
+                                    "key": "sky"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "span",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "literal",
+                                    "value": "low"
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "add",
+                                    "left": {
+                                      "op": "add",
+                                      "left": {
+                                        "op": "literal",
+                                        "value": ""
+                                      },
+                                      "right": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "eq",
+                                          "left": {
+                                            "op": "read",
+                                            "source": "unit"
+                                          },
+                                          "right": {
+                                            "op": "literal",
+                                            "value": "C"
+                                          }
+                                        },
+                                        "then": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "d"
+                                          },
+                                          "key": "low"
+                                        },
+                                        "else": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "d"
+                                          },
+                                          "key": "lowF"
+                                        }
+                                      }
+                                    },
+                                    "right": {
+                                      "op": "literal",
+                                      "value": "°"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "element",
+                              "tag": "span",
+                              "attrs": [
+                                {
+                                  "name": "class",
+                                  "value": {
+                                    "op": "cond",
+                                    "test": {
+                                      "op": "ge",
+                                      "left": {
+                                        "op": "get",
+                                        "object": {
+                                          "op": "local",
+                                          "name": "d"
+                                        },
+                                        "key": "high"
+                                      },
+                                      "right": {
+                                        "op": "literal",
+                                        "value": 25
+                                      }
+                                    },
+                                    "then": {
+                                      "op": "literal",
+                                      "value": "high hot"
+                                    },
+                                    "else": {
+                                      "op": "literal",
+                                      "value": "high"
+                                    }
+                                  }
+                                }
+                              ],
+                              "events": [],
+                              "children": [
+                                {
+                                  "kind": "text",
+                                  "value": {
+                                    "op": "add",
+                                    "left": {
+                                      "op": "add",
+                                      "left": {
+                                        "op": "literal",
+                                        "value": ""
+                                      },
+                                      "right": {
+                                        "op": "cond",
+                                        "test": {
+                                          "op": "eq",
+                                          "left": {
+                                            "op": "read",
+                                            "source": "unit"
+                                          },
+                                          "right": {
+                                            "op": "literal",
+                                            "value": "C"
+                                          }
+                                        },
+                                        "then": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "d"
+                                          },
+                                          "key": "high"
+                                        },
+                                        "else": {
+                                          "op": "get",
+                                          "object": {
+                                            "op": "local",
+                                            "name": "d"
+                                          },
+                                          "key": "highF"
+                                        }
+                                      }
+                                    },
+                                    "right": {
+                                      "op": "literal",
+                                      "value": "°"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
