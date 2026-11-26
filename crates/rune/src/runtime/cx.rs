@@ -83,6 +83,7 @@ pub(crate) struct CxCore {
     pub(super) safe_area: [f32; 4],
     pub(super) layout: layout_read::LayoutRects,
     pub(super) layout_reads: std::cell::RefCell<layout_read::LayoutReads>,
+    pub(super) retained: super::retained::Retained,
 }
 
 /// The host's safe-area insets in points, top/right/bottom/left: the browser's on the web,
@@ -238,6 +239,8 @@ impl<S> Cx<S> {
     pub fn env(&self) -> Env { self.core.env() }
     #[inline(always)]
     pub fn system_dark(&self) -> bool { self.core.system_dark() }
+    /// This window's retained write path, for a host that keeps its own tree. See [`crate::Retained`].
+    pub fn retained(&self) -> crate::Retained { self.core.retained.clone() }
     /// Points from the window's leading edge to the trailing edge of the macOS traffic lights
     /// drawn over the content, for a top bar's leading inset: 0 when nothing is drawn there (full
     /// screen, a titled window whose content starts below its titlebar, other platforms). On

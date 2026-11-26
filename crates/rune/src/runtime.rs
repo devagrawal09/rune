@@ -88,6 +88,8 @@ mod pick;
 mod playground;
 mod rest;
 pub use rest::register_thread_rest_hook;
+mod retained;
+pub use retained::Retained;
 mod scroll;
 pub(crate) mod selection;
 mod system_settings;
@@ -244,6 +246,8 @@ mod any_handlers_tests;
 mod on_key_tests;
 #[cfg(test)]
 mod live_only_tests;
+#[cfg(test)]
+mod retained_tests;
 #[cfg(test)]
 mod live_check_tests;
 #[cfg(test)]

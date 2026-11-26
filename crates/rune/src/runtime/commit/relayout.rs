@@ -91,6 +91,8 @@ pub(in crate::runtime) enum CommitKind {
     Relayout,
     /// Only virtual windows moved: keep mounted subtrees and build the rows that enter.
     Remount,
+    /// Only retained writes (`Runtime::retained`) changed text: write it and lay out again.
+    Patch,
 }
 
 impl RuntimeCore {
@@ -103,6 +105,10 @@ impl RuntimeCore {
             // Exiting nodes left the layout tree.
             && self.commit.layout.live_count() == self.tree.nodes.len();
         if !unchanged { return CommitKind::Rebuild; }
+        if self.commit.retained.pending() {
+            let patch = !self.commit.retained.structural() && pixel_aspects_unchanged(&self.tree);
+            return if patch { CommitKind::Patch } else { CommitKind::Rebuild };
+        }
         if self.commit.relayout {
             // `aspect_fit` elements and clamped `anchored_fit` overlays restore their authored
             // styles before `solve`; only a picture whose decoded aspect changed needs a rebuild.
@@ -115,7 +121,10 @@ impl RuntimeCore {
     /// was built, remounts virtual rows alone when only their window moved, else runs the view.
     pub(in crate::runtime) fn measure_commit(&mut self, app: &dyn ViewDriver, tx: &Tx) -> Measured {
         let kind = self.commit_kind(tx);
-        if kind == CommitKind::Relayout {
+        // A commit that runs the view builds what the retained writes said.
+        let patched = kind == CommitKind::Patch && self.write_retained();
+        if kind != CommitKind::Patch { self.commit.retained.take(); }
+        if kind == CommitKind::Relayout || patched {
             // The view keeps what it last read; `settle_layout_reads` and the caret check run it
             // when the new layout moves them.
             let reads = self.commit.layout_seen.reads.clone();

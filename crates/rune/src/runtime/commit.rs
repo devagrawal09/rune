@@ -82,6 +82,8 @@ pub(crate) struct CommitState {
     mounted_gen: u64,
     /// Whether layout feedback may still cause a commit (see `layout_read`).
     feedback: layout_read::Feedback,
+    /// Text a host with its own tree wrote straight into committed nodes (`Runtime::retained`).
+    pub(in crate::runtime) retained: super::retained::Retained,
 }
 
 impl CommitState {
@@ -121,6 +123,7 @@ impl CommitState {
             mounted_seen: HashSet::default(),
             mounted_gen: 0,
             feedback: Default::default(),
+            retained: Default::default(),
             #[cfg(debug_assertions)]
             last_commit_clock: f64::NEG_INFINITY,
         }
@@ -491,6 +494,7 @@ pub(super) struct Measurement<'a> {
     pub(super) wm_state: crate::WindowManagerState,
     pub(super) wm_state_read: bool,
     pub(super) layout_seen: layout_read::LayoutRects,
+    pub(super) retained: super::retained::Retained,
     pub(super) layout_reads: layout_read::LayoutReads,
 }
 

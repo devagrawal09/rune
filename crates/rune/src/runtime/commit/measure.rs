@@ -104,6 +104,7 @@ impl RuntimeCore {
             wm_state: self.host.wm_state,
             wm_state_read: false,
             layout_seen: self.commit.layout_seen.rects.clone(),
+            retained: self.commit.retained.clone(),
             layout_reads: Vec::new(),
             commits: self.commit.commits,
             nodes: &mut self.tree.nodes,
@@ -566,6 +567,7 @@ impl Measurement<'_> {
             wm_state_read: std::cell::Cell::new(false),
             safe_area: this.safe_area,
             layout: this.layout_seen.clone(),
+            retained: this.retained.clone(),
             layout_reads: Default::default(),
         };
         let mut keep_windows = true;

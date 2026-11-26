@@ -48,7 +48,7 @@ impl RuntimeCore {
     /// The last committed frame is out of date: state changed (an update, poll or handler), or
     /// one asked for a scroll or text flight that waits for the next frame.
     pub(crate) fn needs_commit(&self) -> bool {
-        self.commit.dirty || self.frame.pending.frame_work() || self.patch_pending()
+        self.commit.dirty || self.frame.pending.frame_work() || self.patch_pending() || self.commit.retained.pending()
     }
 
     /// The last frame no longer shows the window: state, its size or queued input changed since.
@@ -505,7 +505,7 @@ impl RuntimeCore {
         // When a scroll request is about to move viewports and nothing else needs a commit,
         // wait for the request so we remount once at the new offset instead of filling the old one.
         let defer_shift = shifted && !ran && !ran_layout && !read_moved && !tx.commit.lands() && has_scroll_request;
-        let besides = self.commit.dirty || self.commit.relayout || settling || (shifted && !defer_shift);
+        let besides = self.commit.dirty || self.commit.relayout || settling || (shifted && !defer_shift) || self.commit.retained.pending();
         let other = ran || besides;
         self.count_layout_echo(ran_layout || read_moved, other);
         if other || ran_layout || read_moved {
@@ -516,7 +516,7 @@ impl RuntimeCore {
                 tx.commit = Commit::Settle;
             }
             self.settled = tx.commit.lands();
-            self.commit.set_state_unchanged(!ran && !self.commit.dirty && !ran_layout && !settling && self.commit.commits > 0);
+            self.commit.set_state_unchanged(!ran && !self.commit.dirty && !ran_layout && !settling && self.commit.commits > 0 && !self.commit.retained.structural());
             #[cfg(debug_assertions)]
             if ran_other || besides || ran_layout || read_moved { self.frame.clear_live_check(); }
             self.capture_keeps(&mut tx);
